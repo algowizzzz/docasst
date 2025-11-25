@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <!--
-Copyright All rights Reserved 2025-2030, Ashutosh Sinha, Email: ajsinha@gmail.com
+Doc Review Assistant - Standalone Version
 -->
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}SAJHA MCP Server{% endblock %}</title>
+    <title>{% block title %}Doc Review Assistant{% endblock %}</title>
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Custom CSS -->
-    <link href="{{ url_for('static', filename='css/style.css') }}?v=20251113" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}?v=20251125" rel="stylesheet">
     
     {% block extra_css %}{% endblock %}
 </head>
@@ -21,8 +21,8 @@ Copyright All rights Reserved 2025-2030, Ashutosh Sinha, Email: ajsinha@gmail.co
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                <i class="bi bi-server"></i> SAJHA MCP Server
+            <a class="navbar-brand" href="{{ url_for('doc_review.documents') }}">
+                <i class="bi bi-file-earmark-text"></i> Doc Review Assistant
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -31,76 +31,27 @@ Copyright All rights Reserved 2025-2030, Ashutosh Sinha, Email: ajsinha@gmail.co
                 <ul class="navbar-nav me-auto">
                     {% if session.token %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('dashboard') }}">
-                            <i class="bi bi-speedometer2"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('tools_list') }}">
-                            <i class="bi bi-tools"></i> Tools
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('doc_review_dashboard') }}">
-                            <i class="bi bi-diagram-3"></i> Doc Review
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint and 'doc_review_documents' in request.endpoint %}active{% endif %}" href="/doc-review/documents">
+                        <a class="nav-link {% if request.endpoint and 'documents' in request.endpoint %}active{% endif %}" href="{{ url_for('doc_review.documents') }}">
                             <i class="bi bi-file-earmark-text"></i> Documents
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint and 'doc_review_prompts' in request.endpoint %}active{% endif %}" href="/doc-review/prompts">
-                            <i class="bi bi-chat-quote"></i> Prompts
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint and 'doc_review_settings' in request.endpoint %}active{% endif %}" href="/doc-review/settings">
-                            <i class="bi bi-gear"></i> Settings
-                        </a>
-                    </li>
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="monitoringDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-graph-up"></i> Monitoring
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('monitoring_tools') }}">Tools Metrics</a></li>
-                            {% if user and user.roles and 'admin' in user.roles %}
-                            <li><a class="dropdown-item" href="{{ url_for('monitoring_users') }}">User Activity</a></li>
-                            {% endif %}
-                        </ul>
-                    </li>
-                    {% if user and user.roles and 'admin' in user.roles %}
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-gear-fill"></i> Admin
-                        </a>
-                        <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="{{ url_for('admin_tools') }}">Manage Tools</a></li>
-                            <li><a class="dropdown-item" href="{{ url_for('admin_users') }}">Manage Users</a></li>
-                        </ul>
-                    </li>
-                    {% endif %}
                     {% endif %}
                 </ul>
                 <ul class="navbar-nav">
-                    {% if session.token and user %}
+                    {% if session.token %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle"></i> {{ user.user_name }}
+                            <i class="bi bi-person-circle"></i> {{ session.username or 'User' }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="#">Profile</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">
                                 <i class="bi bi-box-arrow-right"></i> Logout
                             </a></li>
                         </ul>
                     </li>
                     {% else %}
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('login') }}">
+                        <a class="nav-link" href="{{ url_for('auth.login') }}">
                             <i class="bi bi-box-arrow-in-right"></i> Login
                         </a>
                     </li>
@@ -109,27 +60,23 @@ Copyright All rights Reserved 2025-2030, Ashutosh Sinha, Email: ajsinha@gmail.co
             </div>
         </div>
     </nav>
-    
+
     <!-- Main Content -->
     <main class="container-fluid py-4">
         {% block content %}{% endblock %}
     </main>
-    
+
     <!-- Footer -->
     <footer class="footer mt-auto py-3 bg-light">
         <div class="container text-center">
-            <span class="text-muted">© 2025-2030 SAJHA MCP Server | Ashutosh Sinha</span>
+            <span class="text-muted">Doc Review Assistant v1.0</span>
         </div>
     </footer>
-    
-    <!-- jQuery -->
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
-    <!-- Custom JS -->
-    <script src="{{ url_for('static', filename='js/main.js') }}?v=20251113"></script>
     
     {% block extra_js %}{% endblock %}
 </body>

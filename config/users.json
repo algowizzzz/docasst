@@ -1,7 +1,6 @@
 {
   "admin": {
-    "password_hash": "pbkdf2:sha256:600000$placeholder$will_be_generated",
+    "password_hash": "scrypt:32768:8:1$3enSBKNLGNTR0Wzf$933a5cbe326e4d8da91a863967fe34d9c2c6d43e51143e32766c4d743c8c2d00fcaa2ca30f7815afc522572f37752723f56396e860508edf4637a5020921ca56",
     "email": "admin@example.com"
   }
 }
-

@@ -77,4 +77,4 @@ if __name__ == '__main__':
     debug = config.get('DEBUG', False)
     
     logger.info(f"Starting server on {host}:{port}")
-    socketio.run(app, host=host, port=port, debug=debug)
+    socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
