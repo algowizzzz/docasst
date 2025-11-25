@@ -64,8 +64,8 @@ def call_llm_markdown(system_prompt: str, payload: dict) -> str:
     return response.strip()
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_AGENT_CONFIG_PATH = Path("external/config/agent/doc_review_agent.json")
-TEMPLATE_DIR = Path("external/products/doc_review/templates")
+DEFAULT_AGENT_CONFIG_PATH = Path("config/agent/doc_review_agent.json")
+TEMPLATE_DIR = Path("config/doc_review/outline_templates")
 
 NODE_LABELS: Dict[str, str] = {
     "phase0_ingestion": "Phase 0 – Ingestion",

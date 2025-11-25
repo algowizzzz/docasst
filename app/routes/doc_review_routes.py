@@ -9,10 +9,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from uuid import uuid4
 
-from flask import jsonify, request, render_template, session, send_from_directory, abort, redirect, url_for
+from flask import jsonify, request, render_template, session, send_from_directory, abort, Blueprint, redirect, url_for
+from app.auth import login_required
+from app.config import get_config
+from functools import wraps
 from werkzeug.utils import secure_filename
 
-from flask import Blueprint
+
 from core.agent import DocReviewAgent
 from core.store import DocReviewStore
 from core.vfs import DocReviewVFSAdapter
@@ -21,8 +24,6 @@ from core.comments import CommentsManager
 from core.ai_suggestions import AISuggestionsManager
 from core.chat_history import ChatHistoryManager
 from tools.llm_client import get_llm_client, is_llm_available
-from app.auth import login_required
-from app.config import get_config
 
 
 class LLMNotAvailableError(RuntimeError):
@@ -36,8 +37,7 @@ def generate_chat_reply(message: str, context: str = "") -> str:
         raise LLMNotAvailableError("LLM not configured")
     client = get_llm_client()
     prompt = f"Context: {context}\n\nUser: {message}\n\nAssistant:"
-    return client.invoke_with_prompt(
-    "You are a helpful document review assistant.", prompt)
+    return client.invoke_with_prompt("You are a helpful document review assistant.", prompt)
 
 
 def configure_doc_review_logging():
@@ -45,20 +45,20 @@ def configure_doc_review_logging():
     import logging
     logging.basicConfig(level=logging.INFO)
 
-
 logger = logging.getLogger(__name__)
 
 
 def _slugify(value: str) -> str:
     value = re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip())
     value = re.sub(r"-+", "-", value)
-    return value.strip("-").lower() or "doc"
+    return value.strip("-" ).lower() or "doc"
 
 
-# Create Flask Blueprint
-doc_review_bp = Blueprint('doc_review', __name__, url_prefix='/doc-review')
 
-# Initialize managers (will be set up in init function)
+# Blueprint for doc review routes
+doc_review_bp = Blueprint('doc_review', __name__)
+
+# Module-level managers (initialized in init_doc_review_routes)
 _agent = None
 _store = None
 _comments = None
@@ -66,10 +66,48 @@ _ai_suggestions = None
 _chat_history = None
 _socketio = None
 _upload_dir = None
+_vscode_web_dir = Path("web/static/vscode-web")
+_angular_app_dir = Path("web/static/doc-review-app/dist/doc-review-app/browser")
 
 
-def _make_event_emitter(
-    file_id: str) -> Optional[Callable[[str, Dict[str, Any]], None]]:
+def init_doc_review_routes(socketio_instance=None):
+    """Initialize doc review routes with dependencies."""
+    global _agent, _store, _comments, _ai_suggestions, _chat_history, _socketio, _upload_dir
+    _agent = DocReviewAgent()
+    config = get_config()
+    _store = DocReviewStore(data_dir=config.get('DATA_DIR', 'data/documents'))
+    _comments = CommentsManager(_store)
+    _ai_suggestions = AISuggestionsManager(_store)
+    _chat_history = ChatHistoryManager(_store)
+    _socketio = socketio_instance
+    _upload_dir = Path(config.get('UPLOAD_DIR', 'data/uploads'))
+    _upload_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Doc review routes initialized")
+
+
+
+def _api_key_or_login_required(f):
+    """Decorator that allows API key OR session login."""
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        # Allow OPTIONS requests (CORS preflight) without authentication
+        if request.method == 'OPTIONS':
+            return f(*args, **kwargs)
+        
+        # Check for API key in header
+        api_key = request.headers.get('X-API-Key')
+        if api_key == 'docreview_dev_key_12345':
+            return f(*args, **kwargs)
+        
+        # Fall back to session login
+        if 'user' not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def _make_event_emitter(file_id: str):
     """Create event emitter for Socket.IO."""
     if not _socketio:
         return None
@@ -84,274 +122,324 @@ def _make_event_emitter(
         try:
             _socketio.emit(event_name, data, room=room)
         except Exception:
-            logger.exception(
-    "Failed to emit %s event for %s",
-    event_name,
-     file_id)
+            logger.exception("Failed to emit %s event for %s", event_name, file_id)
 
     return emitter
 
 
-def init_doc_review_routes(socketio_instance=None):
-    """Initialize doc review routes with dependencies."""
-    global _agent, _store, _comments, _ai_suggestions, _chat_history, _socketio, _upload_dir
+# Class methods converted to module-level functions below
 
-    configure_doc_review_logging()
-    _agent = DocReviewAgent()
-    config = get_config()
-    _store = DocReviewStore(data_dir=config.get('DATA_DIR', 'data/documents'))
-    _comments = CommentsManager(_store)
-    _ai_suggestions = AISuggestionsManager(_store)
-    _chat_history = ChatHistoryManager(_store)
-    _socketio = socketio_instance
-    _upload_dir = Path(config.get('UPLOAD_DIR', 'data/uploads'))
-    _upload_dir.mkdir(parents=True, exist_ok=True)
+def _convert_to_doc_state(record: str) -> Optional[Callable[[str, Dict[str, Any]], None]]:
+    if not _socketio:
+        return None
 
+    room = f"doc_review:{file_id}"
+
+    def emitter(event_type: str, payload: Dict[str, Any]) -> None:
+        data = dict(payload)
+        data.setdefault("timestamp", datetime.utcnow().isoformat() + "Z")
+        data["file_id"] = file_id
+        event_name = f"doc_review:{event_type}"
+        try:
+            _socketio.emit(event_name, data, room=room)
+        except Exception:  # pragma: no cover - socket failures should not break workflow
+            logger.exception("Failed to emit %s event for %s", event_name, file_id)
+
+    return emitter
 
 def _convert_to_doc_state(record: Dict[str, Any]) -> Dict[str, Any]:
     """
-        Convert backend document format to DocState format for React editor.
-
-        Backend format: { file_id, state: { structure: { block_metadata: [...] } } }
-        DocState format: { id, title, version, blocks: [...] }
-        """
-        file_id = record.get("file_id", "")
-        state = record.get("state", {})
-        # Read from structure.block_metadata (original IDs) not
-        # state.block_metadata (transformed IDs)
-        structure = state.get("structure", {})
-        block_metadata = structure.get("block_metadata", [])
-
-        # DEBUG: Log block IDs being read
-        if block_metadata:
-            block_ids = [b.get("id", "") for b in block_metadata[:10]]
-            logger.info(
-    f"[_convert_to_doc_state] Reading from structure.block_metadata (first 10 IDs): {block_ids}")
-
-        # Check if there's block_metadata at state level (shouldn't be used)
-        state_block_metadata = state.get("block_metadata", [])
-        if state_block_metadata:
-            state_block_ids = [b.get("id", "")
-                                     for b in state_block_metadata[:10]]
-            logger.warning(
-    f"[_convert_to_doc_state] ⚠️ Found block_metadata at state level (first 10 IDs): {state_block_ids} - NOT USING THIS")
-
-        # Convert blocks
-        blocks = []
-        for block in block_metadata:
-            block_id = block.get("id", "")
-            block_type = block.get("type", "paragraph")
-            content = block.get("content", "")
-
-            # Convert content to TextRun format
-            text_runs = []
-            if isinstance(content, list):
-                # Already in InlineSegment format
-                for seg in content:
-                    text_runs.append({
-                        "text": seg.get("text", ""),
-                        "bold": seg.get("bold", False),
-                        "italic": seg.get("italic", False),
-                        "underline": seg.get("underline", False),
-                        "code": seg.get("code", False),
-                    })
-            elif isinstance(content, str):
-                # Plain string
-                text_runs = [{"text": content}]
-
-            # Create block based on type
-            if block_type == "heading":
-                blocks.append({
-                    "id": block_id,
-                    "type": "heading",
-                    "level": block.get("level", 1),
-                    "text": text_runs,
-                    "sectionKey": block.get("section_key"),
+    Convert backend document format to DocState format for React editor.
+    
+    Backend format: { file_id, state: { structure: { block_metadata: [...] } } }
+    DocState format: { id, title, version, blocks: [...] }
+    """
+    file_id = record.get("file_id", "")
+    state = record.get("state", {})
+    # Read from structure.block_metadata (original IDs) not state.block_metadata (transformed IDs)
+    structure = state.get("structure", {})
+    block_metadata = structure.get("block_metadata", [])
+    
+    # DEBUG: Log block IDs being read
+    if block_metadata:
+        block_ids = [b.get("id", "") for b in block_metadata[:10]]
+        logger.info(f"[_convert_to_doc_state] Reading from structure.block_metadata (first 10 IDs): {block_ids}")
+    
+    # Check if there's block_metadata at state level (shouldn't be used)
+    state_block_metadata = state.get("block_metadata", [])
+    if state_block_metadata:
+        state_block_ids = [b.get("id", "") for b in state_block_metadata[:10]]
+        logger.warning(f"[_convert_to_doc_state] ⚠️ Found block_metadata at state level (first 10 IDs): {state_block_ids} - NOT USING THIS")
+    
+    # Convert blocks
+    blocks = []
+    for block in block_metadata:
+        block_id = block.get("id", "")
+        block_type = block.get("type", "paragraph")
+        content = block.get("content", "")
+        
+        # Convert content to TextRun format
+        text_runs = []
+        if isinstance(content, list):
+            # Already in InlineSegment format
+            for seg in content:
+                text_runs.append({
+                    "text": seg.get("text", ""),
+                    "bold": seg.get("bold", False),
+                    "italic": seg.get("italic", False),
+                    "underline": seg.get("underline", False),
+                    "code": seg.get("code", False),
                 })
-            elif block_type == "paragraph":
-                blocks.append({
-                    "id": block_id,
-                    "type": "paragraph",
-                    "text": text_runs,
-                    "sectionKey": block.get("section_key"),
+        elif isinstance(content, str):
+            # Plain string
+            text_runs = [{"text": content}]
+        
+        # Create block based on type
+        if block_type == "heading":
+            blocks.append({
+                "id": block_id,
+                "type": "heading",
+                "level": block.get("level", 1),
+                "text": text_runs,
+                "sectionKey": block.get("section_key"),
+            })
+        elif block_type == "paragraph":
+            blocks.append({
+                "id": block_id,
+                "type": "paragraph",
+                "text": text_runs,
+                "sectionKey": block.get("section_key"),
+            })
+        elif block_type == "list":
+            # Convert list items
+            items = []
+            list_items = block.get("items", [])
+            for item in list_items:
+                item_text = item.get("text", "") if isinstance(item, dict) else str(item)
+                items.append({
+                    "id": f"{block_id}_item_{len(items)}",
+                    "text": [{"text": item_text}],
                 })
-            elif block_type == "list":
-                # Convert list items
-                items = []
-                list_items = block.get("items", [])
-                for item in list_items:
-                    item_text = item.get(
-    "text", "") if isinstance(
-        item, dict) else str(item)
-                    items.append({
-                        "id": f"{block_id}_item_{len(items)}",
-                        "text": [{"text": item_text}],
-                    })
+            
+            blocks.append({
+                "id": block_id,
+                "type": "list",
+                "style": block.get("list_type", "bullet"),
+                "items": items,
+                "sectionKey": block.get("section_key"),
+            })
+        elif block_type == "code" or block_type == "preformatted":
+            blocks.append({
+                "id": block_id,
+                "type": "preformatted",
+                "text": content if isinstance(content, str) else "",
+                "language": block.get("language"),
+            })
+        elif block_type == "divider":
+            blocks.append({
+                "id": block_id,
+                "type": "divider",
+            })
+        else:
+            # Default to paragraph
+            blocks.append({
+                "id": block_id,
+                "type": "paragraph",
+                "text": text_runs,
+            })
+    
+    # Build DocState
+    doc_state = {
+        "id": file_id,
+        "title": record.get("file_id", ""),
+        "version": "1.0",
+        "blocks": blocks,
+    }
+    
+    return doc_state
 
-                blocks.append({
-                    "id": block_id,
-                    "type": "list",
-                    "style": block.get("list_type", "bullet"),
-                    "items": items,
-                    "sectionKey": block.get("section_key"),
-                })
-            elif block_type == "code" or block_type == "preformatted":
-                blocks.append({
-                    "id": block_id,
-                    "type": "preformatted",
-                    "text": content if isinstance(content, str) else "",
-                    "language": block.get("language"),
-                })
-            elif block_type == "divider":
-                blocks.append({
-                    "id": block_id,
-                    "type": "divider",
-                })
-            else:
-                # Default to paragraph
-                blocks.append({
-                    "id": block_id,
-                    "type": "paragraph",
-                    "text": text_runs,
-                })
+def _should_use_flask_ui(feature: str = 'default') -> bool:
+    """
+    Check if Flask UI should be used for a specific feature.
+    
+    Args:
+        feature: Feature name ('documents', 'workspace', 'prompts', 'settings')
+                 or 'default' for general flag
+    
+    Returns:
+        True if Flask UI should be used, False for React app
+    """
+    from core.properties_configurator import PropertiesConfigurator
+    
+    # Get properties configurator
+    props = PropertiesConfigurator(['config/application.properties'])
+    
+    # Check specific feature flag first
+    if feature != 'default':
+        flag_name = f'doc_review.use_flask_{feature}'
+        specific_flag = props.get(flag_name, None)
+        if specific_flag is not None:
+            return specific_flag.lower() == 'true'
+    
+    # Fall back to general flag
+    general_flag = props.get('doc_review.use_flask_ui', 'true')
+    return general_flag.lower() == 'true'
 
-        # Build DocState
-        doc_state = {
-            "id": file_id,
-            "title": record.get("file_id", ""),
-            "version": "1.0",
-            "blocks": blocks,
-        }
+def register_routes(app):  # noqa: D401
+    """Register document review routes."""
 
-        return doc_state
+    def _load_record_and_state(file_id: str) -> Optional[Dict[str, Any]]:
+        record = _store.load(file_id)
+        if not record:
+            return None
+        state = record.get("state")
+        if not isinstance(state, dict):
+            return None
+        record["state"] = state
+        return record
 
-
-def _load_record_and_state(file_id: str) -> Optional[Dict[str, Any]]:
-    """Load record and state from store."""
-    record = _store.load(file_id)
-    if not record:
-        return None
-    state = record.get("state")
-    if not isinstance(state, dict):
-        return None
-    record["state"] = state
-    return record
-
-
-def _api_key_or_login_required(f):
-    """Decorator that allows API key OR session login."""
-    from functools import wraps
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-    # Allow OPTIONS requests (CORS preflight) without authentication
-        if request.method == 'OPTIONS':
+    def _api_key_or_login_required(f):
+        """Decorator that allows API key OR session login."""
+        from functools import wraps
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            # Allow OPTIONS requests (CORS preflight) without authentication
+            if request.method == 'OPTIONS':
+                return f(*args, **kwargs)
+            
+            # Check for API key in header
+            api_key = request.headers.get('X-API-Key')
+            if api_key == 'docreview_dev_key_12345':  # Simple dev key
+                return f(*args, **kwargs)
+            
+            # Fall back to session login - check if user is logged in
+            from flask import session
+            if 'token' not in session:
+                # For API calls, return JSON error instead of redirect
+                if request.path.startswith('/api/'):
+                    return jsonify({"error": "Authentication required"}), 401
+                from flask import redirect, url_for, request as flask_request
+                return redirect(url_for('login', next=flask_request.url))
+            
+            # Validate session token
+            session_data = self.auth_manager.validate_session(session['token'])
+            if not session_data:
+                session.pop('token', None)
+                if request.path.startswith('/api/'):
+                    return jsonify({"error": "Invalid or expired session"}), 401
+                from flask import redirect, url_for, request as flask_request
+                return redirect(url_for('login', next=flask_request.url))
+            
             return f(*args, **kwargs)
+        return wrapper
 
-        # Check for API key in header
-        api_key = request.headers.get('X-API-Key')
-        if api_key == 'docreview_dev_key_12345':  # Simple dev key
-            return f(*args, **kwargs)
+    @app.route("/doc-review")
+    @self.login_required
+    def doc_review_dashboard():
+        return render_template("doc_review_cockpit.html")
 
-        # Fall back to session login
-        if 'token' not in session:
-            # For API calls, return JSON error instead of redirect
-            if request.path.startswith('/api/'):
-                return jsonify({"error": "Authentication required"}), 401
-            return redirect(url_for('auth.login'))
+    @app.route("/doc-review/documents")
+    @app.route("/doc-review/documents/")
+    @self.login_required
+    def doc_review_documents():
+        """Documents list page - Flask template version"""
+        # Check feature flag
+        if self._should_use_flask_ui('documents'):
+            try:
+                # Load documents from store
+                documents = _store.list_documents()
+                return render_template(
+                    "doc_review_documents.html",
+                    documents=documents
+                )
+            except Exception as e:
+                logger.error(f"Error loading documents: {e}", exc_info=True)
+                return render_template(
+                    "doc_review_documents.html",
+                    documents=[],
+                    error=str(e)
+                )
+        else:
+            # Redirect to React app
+            from flask import redirect
+            return redirect('/doc-review/app/documents')
 
-        return f(*args, **kwargs)
-    return wrapper
+    @app.route("/doc-review/workspace")
+    @app.route("/doc-review/workspace/<file_id>")
+    @self.login_required
+    def doc_review_workspace(file_id: Optional[str] = None):
+        """Workspace page with editor island - Flask template version"""
+        # Check feature flag
+        if self._should_use_flask_ui('workspace'):
+            try:
+                doc_state_json = "{}"
+                
+                if file_id:
+                    record = _store.load(file_id)
+                    if record:
+                        # Convert to DocState format
+                        doc_state = _convert_to_doc_state(record)
+                        
+                        # Debug: Log block IDs being sent to editor
+                        block_ids_from_api = [b.get("id", "") for b in doc_state.get("blocks", [])]
+                        logger.info(f"[Workspace] Block IDs from API DocState: {block_ids_from_api[:20]}... (total: {len(block_ids_from_api)})")
+                        
+                        doc_state_json = json.dumps(doc_state)
+                
+                return render_template(
+                    "doc_review_workspace.html",
+                    file_id=file_id,
+                    doc_state_json=doc_state_json,
+                )
+            except Exception as e:
+                logger.error(f"Error loading workspace: {e}", exc_info=True)
+                return render_template(
+                    "doc_review_workspace.html",
+                    file_id=None,
+                    doc_state_json="{}",
+                    error=str(e)
+                )
+        else:
+            # Redirect to React app
+            from flask import redirect
+            if file_id:
+                return redirect(f'/doc-review/app/workspace?file={file_id}')
+            return redirect('/doc-review/app/workspace')
 
+    @app.route("/doc-review/prompts")
+    @self.login_required
+    def doc_review_prompts():
+        """Prompts page - Flask template version"""
+        if self._should_use_flask_ui('prompts'):
+            return render_template("doc_review_prompts.html")
+        else:
+            from flask import redirect
+            return redirect('/doc-review/app/prompts')
 
-@doc_review_bp.route("/")
-@login_required
-def doc_review_dashboard():
-    return redirect(url_for('doc_review.documents'))
-
-
-@doc_review_bp.route("/documents")
-@doc_review_bp.route("/documents/")
-@login_required
-def doc_review_documents():
-    """Documents list page - Flask template version"""
-    try:
-        # Load documents from store
-        documents = _store.list_documents()
-        return render_template(
-            "doc_review_documents.html",
-            documents=documents
-        )
-    except Exception as e:
-        logger.error(f"Error loading documents: {e}", exc_info=True)
-        return render_template(
-            "doc_review_documents.html",
-            documents=[],
-            error=str(e)
-        )
-
-
-@doc_review_bp.route("/workspace")
-@doc_review_bp.route("/workspace/<file_id>")
-@login_required
-def doc_review_workspace(file_id: Optional[str] = None):
-    """Workspace page with editor island - Flask template version"""
-    try:
-        doc_state_json = "{}"
-
-        if file_id:
-            record = _store.load(file_id)
-            if record:
-                # Convert to DocState format
-                doc_state = _convert_to_doc_state(record)
-                doc_state_json = json.dumps(doc_state)
-
-        return render_template(
-            "doc_review_workspace.html",
-            file_id=file_id,
-            doc_state_json=doc_state_json,
-        )
-    except Exception as e:
-        logger.error(f"Error loading workspace: {e}", exc_info=True)
-        return render_template(
-            "doc_review_workspace.html",
-            file_id=None,
-            doc_state_json="{}",
-            error=str(e)
-        )
-
-
-@doc_review_bp.route("/prompts")
-@login_required
-def doc_review_prompts():
-    """Prompts page - Flask template version"""
-    return render_template("doc_review_prompts.html")
-
-
-@doc_review_bp.route("/doc-review/settings")
-@login_required
-def doc_review_settings():
-    """Settings page - Flask template version"""
-        if True:
+    @app.route("/doc-review/settings")
+    @self.login_required
+    def doc_review_settings():
+        """Settings page - Flask template version"""
+        if self._should_use_flask_ui('settings'):
             return render_template("doc_review_settings.html")
         else:
             from flask import redirect
             return redirect('/doc-review/app/settings')
 
-
-@doc_review_bp.route("/doc-review/editor-demo")
-@doc_review_bp.route("/doc-review/editor-demo/<file_id>")
-@login_required
-def doc_review_editor_demo(file_id: Optional[str] = None):
-    """
+    @app.route("/doc-review/editor-demo")
+    @app.route("/doc-review/editor-demo/<file_id>")
+    @self.login_required
+    def doc_review_editor_demo(file_id: Optional[str] = None):
+        """
         Demo page showing React editor mounted as an "island" in Flask template.
         This demonstrates Option 2: React Island pattern.
         """
         import time
-
+        
         # Get document if file_id provided
         doc_state_json = "{}"
         doc_status = "No document loaded"
-
+        
         if file_id:
             try:
                 record = _store.load(file_id)
@@ -363,10 +451,10 @@ def doc_review_editor_demo(file_id: Optional[str] = None):
             except Exception as e:
                 logger.warning(f"Failed to load document {file_id}: {e}")
                 doc_status = f"Error: {str(e)}"
-
+        
         # Cache bust for editor bundle
         cache_bust = int(time.time())
-
+        
         return render_template(
             "doc_review_editor_demo.html",
             file_id=file_id,
@@ -375,75 +463,73 @@ def doc_review_editor_demo(file_id: Optional[str] = None):
             cache_bust=cache_bust,
         )
 
-
-@doc_review_bp.route("/doc-review/ide")
-@login_required
-def doc_review_vscode_dashboard():
-    vscode_ready = self.vscode_web_dir.exists()
+    @app.route("/doc-review/ide")
+    @self.login_required
+    def doc_review_vscode_dashboard():
+        vscode_ready = _vscode_web_dir.exists()
         return render_template(
             "doc_review_vscode_shell.html",
             vscode_ready=vscode_ready,
         )
 
-
-@doc_review_bp.route("/doc-review/ide/launch")
-@login_required
-def doc_review_vscode_launch():
-    if not self.vscode_web_dir.exists():
+    @app.route("/doc-review/ide/launch")
+    @self.login_required
+    def doc_review_vscode_launch():
+        if not _vscode_web_dir.exists():
             return render_template(
                 "doc_review_vscode_shell.html",
                 vscode_ready=False,
                 error="VS Code Web assets missing. Run setup script first.",
             ), 503
-        index_path = self.vscode_web_dir / "index.html"
+        index_path = _vscode_web_dir / "index.html"
         if not index_path.exists():
             return render_template(
                 "doc_review_vscode_shell.html",
                 vscode_ready=False,
                 error="VS Code Web index.html not found.",
             ), 503
-        return send_from_directory(self.vscode_web_dir, "index.html")
+        return send_from_directory(_vscode_web_dir, "index.html")
 
-@doc_review_bp.route("/doc-review/ide/assets/<path:filename>")
-@login_required
-def doc_review_vscode_assets(filename: str):
-    if not self.vscode_web_dir.exists():
+    @app.route("/doc-review/ide/assets/<path:filename>")
+    @self.login_required
+    def doc_review_vscode_assets(filename: str):
+        if not _vscode_web_dir.exists():
             abort(404)
-        return send_from_directory(self.vscode_web_dir, filename)
+        return send_from_directory(_vscode_web_dir, filename)
 
-        # Angular App Routes
-@doc_review_bp.route("/doc-review/app")
-@doc_review_bp.route("/doc-review/app/")
-@doc_review_bp.route("/doc-review/app/<path:path>")
-@login_required
-def doc_review_angular_app(path=None):
-    """Serve the Angular production build."""
-        if not self.angular_app_dir.exists():
+    # Angular App Routes
+    @app.route("/doc-review/app")
+    @app.route("/doc-review/app/")
+    @app.route("/doc-review/app/<path:path>")
+    @self.login_required
+    def doc_review_angular_app(path=None):
+        """Serve the Angular production build."""
+        if not _angular_app_dir.exists():
             return render_template(
                 "doc_review_placeholder.html",
                 error="Angular app not built yet. Run 'npm run build' in web/static/doc-review-app/"
             ), 503
 
         # Serve index.html for all routes (Angular handles routing)
-        index_path = self.angular_app_dir / "index.html"
+        index_path = _angular_app_dir / "index.html"
         if not index_path.exists():
             return "Angular app index.html not found", 404
 
         # For file requests with extensions, serve the actual file
         if path and '.' in path.split('/')[-1]:
             try:
-                return send_from_directory(self.angular_app_dir, path)
+                return send_from_directory(_angular_app_dir, path)
             except:
                 pass
 
         # For all other routes, serve index.html (SPA routing)
-        return send_from_directory(self.angular_app_dir, 'index.html')
+        return send_from_directory(_angular_app_dir, 'index.html')
 
-@doc_review_bp.route("/api/doc_review/welcome", methods=["GET"])
-@_api_key_or_login_required
-def doc_review_get_welcome_message():
-    """Return the welcome message for the chatbot."""
-    welcome_path = Path("config/agent_welcome.md")
+    @app.route("/api/doc_review/welcome", methods=["GET"])
+    @_api_key_or_login_required
+    def doc_review_get_welcome_message():
+        """Return the welcome message for the chatbot."""
+        welcome_path = Path("config/agent_welcome.md")
         if not welcome_path.exists():
             welcome_path = Path("external/config/agent_welcome.md")
         
@@ -459,10 +545,10 @@ def doc_review_get_welcome_message():
             "content": "Welcome to the Document Review Agent! This tool helps you ingest, analyze, and restructure documents through a streamlined four-phase workflow. Select a document from the left sidebar to begin."
         })
 
-@doc_review_bp.route("/api/doc_review/templates/<template_id>", methods=["GET"])
-@login_required
-def get_template(template_id: str):
-    # Try primary location first
+    @app.route("/api/doc_review/templates/<template_id>", methods=["GET"])
+    @self.login_required
+    def get_template(template_id: str):
+        # Try primary location first
         template_path = Path("config/doc_review/outline_templates") / f"{template_id}.json"
         if not template_path.exists():
             # Fallback to legacy location
@@ -484,11 +570,11 @@ def get_template(template_id: str):
             logger.exception("Failed to load template %s: %s", template_id, exc)
             return jsonify({"error": "Template could not be loaded"}), 500
 
-@doc_review_bp.route("/api/doc_review/documents", methods=["GET", "POST"])
-@_api_key_or_login_required
-        def documents():
-    if request.method == "GET":
-            return jsonify({"documents": self.store.list_documents()})
+    @app.route("/api/doc_review/documents", methods=["GET", "POST"])
+    @_api_key_or_login_required
+    def documents():
+        if request.method == "GET":
+            return jsonify({"documents": _store.list_documents()})
 
         payload = request.get_json(force=True, silent=True) or {}
         source_path = payload.get("source_path", "").strip()
@@ -506,7 +592,7 @@ def get_template(template_id: str):
         overrides = payload.get("config") or {}
         # Accept overrides directly if no builder available
         config = overrides
-        record = self.store.save(
+        record = _store.save(
             file_id,
             str(path.resolve()),
             state={"config": config},
@@ -525,11 +611,11 @@ def get_template(template_id: str):
 
         return jsonify({"document": record}), 201
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>", methods=["GET", "DELETE"])
-@_api_key_or_login_required
-def get_or_delete_document(file_id: str):
-    if request.method == "DELETE":
-            success = self.store.delete(file_id)
+    @app.route("/api/doc_review/documents/<file_id>", methods=["GET", "DELETE"])
+    @_api_key_or_login_required
+    def get_or_delete_document(file_id: str):
+        if request.method == "DELETE":
+            success = _store.delete(file_id)
             if success:
                 logger.info(f"Document deleted: {file_id}")
                 return jsonify({"message": f"Document '{file_id}' deleted successfully"}), 200
@@ -541,10 +627,10 @@ def get_or_delete_document(file_id: str):
             return jsonify({"error": "Document not found"}), 404
         return jsonify({"document": record})
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/phase1_summary", methods=["GET"])
-@_api_key_or_login_required
-def get_phase1_summary(file_id: str):
-    record = _store.load(file_id)
+    @app.route("/api/doc_review/documents/<file_id>/phase1_summary", methods=["GET"])
+    @_api_key_or_login_required
+    def get_phase1_summary(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
         
@@ -558,10 +644,10 @@ def get_phase1_summary(file_id: str):
             "phase1_report": phase1_report,
         })
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/phase1_reports", methods=["GET"])
-@_api_key_or_login_required
-def get_phase1_reports(file_id: str):
-    record = _store.load(file_id)
+    @app.route("/api/doc_review/documents/<file_id>/phase1_reports", methods=["GET"])
+    @_api_key_or_login_required
+    def get_phase1_reports(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
 
@@ -579,13 +665,13 @@ def get_phase1_reports(file_id: str):
             }
         )
 
-@doc_review_bp.route(
+    @app.route(
         "/api/doc_review/documents/<file_id>/template_fitness",
         methods=["POST"],
-        )
-@login_required
-def run_template_fitness_analysis(file_id: str):
-    record = _store.load(file_id)
+    )
+    @self.login_required
+    def run_template_fitness_analysis(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
 
@@ -622,7 +708,7 @@ def run_template_fitness_analysis(file_id: str):
                 template_id,
                 template_label=template_label,
             )
-            updated = self.store.save(
+            updated = _store.save(
                 file_id, source_path, working_state, record.get("status", "ready")
             )
             latest_report = (
@@ -639,10 +725,10 @@ def run_template_fitness_analysis(file_id: str):
             logger.exception("Template fitness analysis failed for %s", file_id)
             return jsonify({"error": str(exc)}), 500
 
-@doc_review_bp.route("/api/doc_review/upload_dir/files", methods=["GET"])
-@login_required
-def list_upload_dir_files():
-    """List all files in the upload directory."""
+    @app.route("/api/doc_review/upload_dir/files", methods=["GET"])
+    @self.login_required
+    def list_upload_dir_files():
+        """List all files in the upload directory."""
         files = []
         if _upload_dir.exists():
             for path in sorted(_upload_dir.glob("*")):
@@ -659,10 +745,10 @@ def list_upload_dir_files():
             "files": files,
         })
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/run_phase1", methods=["POST"])
-@_api_key_or_login_required
-def run_phase1_only(file_id: str):
-    """Run Phase 0 ingestion only (converts document to markdown with block metadata)."""
+    @app.route("/api/doc_review/documents/<file_id>/run_phase1", methods=["POST"])
+    @_api_key_or_login_required
+    def run_phase1_only(file_id: str):
+        """Run Phase 0 ingestion only (converts document to markdown with block metadata)."""
         record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
@@ -679,7 +765,7 @@ def run_phase1_only(file_id: str):
         _agent.set_event_emitter(emitter)
         
         try:
-            self.store.update_status(file_id, "running")
+            _store.update_status(file_id, "running")
             
             # Set environment variable for tool to use
             import os
@@ -692,7 +778,7 @@ def run_phase1_only(file_id: str):
                 template_id=template_id,
             )
             # Save the completed state
-            updated = self.store.save(file_id, source_path, state, status="ready")
+            updated = _store.save(file_id, source_path, state, status="ready")
             if emitter:
                 emitter(
                     "status",
@@ -711,7 +797,7 @@ def run_phase1_only(file_id: str):
             return jsonify({"document": updated})
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Phase 1 run failed for %s", file_id)
-            self.store.update_status(file_id, "error")
+            _store.update_status(file_id, "error")
             if emitter:
                 emitter(
                     "log",
@@ -730,10 +816,10 @@ def run_phase1_only(file_id: str):
                 )
             return jsonify({"error": str(exc)}), 500
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/analyze", methods=["POST"])
-@_api_key_or_login_required
-        def analyze_document(file_id: str):
-    """Run full document analysis workflow (TOC review + 4 holistic checks + synthesis)."""
+    @app.route("/api/doc_review/documents/<file_id>/analyze", methods=["POST"])
+    @_api_key_or_login_required
+    def analyze_document(file_id: str):
+        """Run full document analysis workflow (TOC review + 4 holistic checks + synthesis)."""
         record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
@@ -751,7 +837,7 @@ def run_phase1_only(file_id: str):
         _agent.set_event_emitter(emitter)
         
         try:
-            self.store.update_status(file_id, "running")
+            _store.update_status(file_id, "running")
             
             # Use existing state from store
             state = existing_state.copy()
@@ -764,7 +850,7 @@ def run_phase1_only(file_id: str):
             state = _agent.orchestrate(state)
             
             # Save the completed state
-            updated = self.store.save(file_id, source_path, state, status="ready")
+            updated = _store.save(file_id, source_path, state, status="ready")
             
             if emitter:
                 emitter(
@@ -784,7 +870,7 @@ def run_phase1_only(file_id: str):
             
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Document analysis failed for %s", file_id)
-            self.store.update_status(file_id, "error")
+            _store.update_status(file_id, "error")
             if emitter:
                 emitter(
                     "log",
@@ -803,11 +889,11 @@ def run_phase1_only(file_id: str):
                 )
             return jsonify({"error": str(exc)}), 500
 
-        # DEPRECATED: Agent planner not used by React editor
-        # @doc_review_bp.route("/api/doc_review/handle_user_message", methods=["POST"])
-        # @login_required
-        def handle_user_message_api_DEPRECATED():
-    payload = request.get_json(force=True, silent=True) or {}
+    # DEPRECATED: Agent planner not used by React editor
+    # @app.route("/api/doc_review/handle_user_message", methods=["POST"])
+    # @self.login_required
+    def handle_user_message_api_DEPRECATED():
+        payload = request.get_json(force=True, silent=True) or {}
         file_id = (payload.get("file_id") or "").strip()
         user_message = (payload.get("message") or "").strip()
         auto_execute = bool(payload.get("auto_execute", True))
@@ -851,7 +937,7 @@ def run_phase1_only(file_id: str):
         finally:
             _agent.set_event_emitter(previous_emitter)
 
-        updated = self.store.save(
+        updated = _store.save(
             file_id,
             source_path,
             state,
@@ -859,15 +945,15 @@ def run_phase1_only(file_id: str):
         )
         return jsonify({"result": result, "document": updated})
 
-        def _build_vfs_adapter(file_id: str) -> Tuple[Dict[str, Any], DocReviewVFSAdapter]:
-    record = _load_record_and_state(file_id)
+    def _build_vfs_adapter(file_id: str) -> Tuple[Dict[str, Any], DocReviewVFSAdapter]:
+        record = _load_record_and_state(file_id)
         if not record:
             raise KeyError("Document not found")
         adapter = DocReviewVFSAdapter(record["state"])
         return record, adapter
 
-        def _emit_vfs_event(file_id: str, path: str) -> None:
-    emitter = _make_event_emitter(file_id)
+    def _emit_vfs_event(file_id: str, path: str) -> None:
+        emitter = _make_event_emitter(file_id)
         if emitter:
             emitter(
                 "vfs_file_updated",
@@ -877,10 +963,10 @@ def run_phase1_only(file_id: str):
                 },
             )
 
-@doc_review_bp.route("/api/doc_review/vfs/tree", methods=["GET"])
-@_api_key_or_login_required
-def doc_review_vfs_tree():
-    file_id = (request.args.get("file_id") or "").strip()
+    @app.route("/api/doc_review/vfs/tree", methods=["GET"])
+    @_api_key_or_login_required
+    def doc_review_vfs_tree():
+        file_id = (request.args.get("file_id") or "").strip()
         path = request.args.get("path") or "/"
         if not file_id:
             return jsonify({"error": "file_id is required"}), 400
@@ -893,10 +979,10 @@ def doc_review_vfs_tree():
         except FileNotFoundError:
             return jsonify({"error": f"Path '{path}' not found"}), 404
 
-@doc_review_bp.route("/api/doc_review/vfs/stat", methods=["GET"])
-@_api_key_or_login_required
-def doc_review_vfs_stat():
-    file_id = (request.args.get("file_id") or "").strip()
+    @app.route("/api/doc_review/vfs/stat", methods=["GET"])
+    @_api_key_or_login_required
+    def doc_review_vfs_stat():
+        file_id = (request.args.get("file_id") or "").strip()
         path = request.args.get("path") or "/"
         if not file_id:
             return jsonify({"error": "file_id is required"}), 400
@@ -909,10 +995,10 @@ def doc_review_vfs_stat():
         except FileNotFoundError:
             return jsonify({"error": f"Path '{path}' not found"}), 404
 
-@doc_review_bp.route("/api/doc_review/vfs/file", methods=["GET", "PATCH"])
-@_api_key_or_login_required
-def doc_review_vfs_file():
-    if request.method == "GET":
+    @app.route("/api/doc_review/vfs/file", methods=["GET", "PATCH"])
+    @_api_key_or_login_required
+    def doc_review_vfs_file():
+        if request.method == "GET":
             file_id = (request.args.get("file_id") or "").strip()
             if not file_id:
                 return jsonify({"error": "file_id is required"}), 400
@@ -942,7 +1028,7 @@ def doc_review_vfs_file():
         try:
             record, adapter = _build_vfs_adapter(file_id)
             adapter.write_file(path, data)
-            updated = self.store.save(
+            updated = _store.save(
                 file_id,
                 record.get("source_path"),
                 record["state"],
@@ -959,11 +1045,11 @@ def doc_review_vfs_file():
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        # DEPRECATED: Phase 2 LLM workflow not used by React editor (uses TemplateProcessor instead)
-        # @doc_review_bp.route("/api/doc_review/documents/<file_id>/run_phase2", methods=["POST"])
-        # @_api_key_or_login_required
-def run_phase2_only_DEPRECATED(file_id: str):
-    """DEPRECATED: Run only Phase 2 (section extraction & reviews) workflow."""
+    # DEPRECATED: Phase 2 LLM workflow not used by React editor (uses TemplateProcessor instead)
+    # @app.route("/api/doc_review/documents/<file_id>/run_phase2", methods=["POST"])
+    # @_api_key_or_login_required
+    def run_phase2_only_DEPRECATED(file_id: str):
+        """DEPRECATED: Run only Phase 2 (section extraction & reviews) workflow."""
         record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
@@ -984,7 +1070,7 @@ def run_phase2_only_DEPRECATED(file_id: str):
         _agent.set_event_emitter(emitter)
         
         try:
-            self.store.update_status(file_id, "running")
+            _store.update_status(file_id, "running")
             
             # Run Phase 2 using the agent's method
             state = _agent.run_phase2(
@@ -993,7 +1079,7 @@ def run_phase2_only_DEPRECATED(file_id: str):
             )
             
             # Save the completed state
-            updated = self.store.save(file_id, source_path, state, status="ready")
+            updated = _store.save(file_id, source_path, state, status="ready")
             if emitter:
                 emitter(
                     "status",
@@ -1005,7 +1091,7 @@ def run_phase2_only_DEPRECATED(file_id: str):
             return jsonify({"document": updated})
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Phase 2 run failed for %s", file_id)
-            self.store.update_status(file_id, "error")
+            _store.update_status(file_id, "error")
             if emitter:
                 emitter(
                     "log",
@@ -1024,10 +1110,10 @@ def run_phase2_only_DEPRECATED(file_id: str):
                 )
             return jsonify({"error": str(exc)}), 500
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/config", methods=["PATCH"])
-@_api_key_or_login_required
-        def update_document_config(file_id: str):
-    record = _store.load(file_id)
+    @app.route("/api/doc_review/documents/<file_id>/config", methods=["PATCH"])
+    @_api_key_or_login_required
+    def update_document_config(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
 
@@ -1045,7 +1131,7 @@ def run_phase2_only_DEPRECATED(file_id: str):
 
         # Accept overrides directly if no builder available
         existing_state["config"] = overrides
-        updated = self.store.save(file_id, source_path, existing_state, status="ready")
+        updated = _store.save(file_id, source_path, existing_state, status="ready")
 
         emitter = _make_event_emitter(file_id)
         if emitter:
@@ -1059,11 +1145,11 @@ def run_phase2_only_DEPRECATED(file_id: str):
 
         return jsonify({"document": updated})
 
-        # DEPRECATED: Full Phase 1/2/3 workflow not used by React editor
-        # @doc_review_bp.route("/api/doc_review/documents/<file_id>/run", methods=["POST"])
-        # @_api_key_or_login_required
-def run_document_workflow_DEPRECATED(file_id: str):
-    record = _store.load(file_id)
+    # DEPRECATED: Full Phase 1/2/3 workflow not used by React editor
+    # @app.route("/api/doc_review/documents/<file_id>/run", methods=["POST"])
+    # @_api_key_or_login_required
+    def run_document_workflow_DEPRECATED(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
 
@@ -1079,9 +1165,9 @@ def run_document_workflow_DEPRECATED(file_id: str):
         emitter = _make_event_emitter(file_id)
 
         try:
-            self.store.update_status(file_id, "running")
+            _store.update_status(file_id, "running")
             state = _agent.run(state_input, event_emitter=emitter)
-            updated = self.store.save(file_id, source_path, state, status="completed")
+            updated = _store.save(file_id, source_path, state, status="completed")
             if emitter:
                 emitter(
                     "status",
@@ -1093,7 +1179,7 @@ def run_document_workflow_DEPRECATED(file_id: str):
             return jsonify({"document": updated})
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Doc review run failed for %s", file_id)
-            self.store.update_status(file_id, "error")
+            _store.update_status(file_id, "error")
             if emitter:
                 emitter(
                     "log",
@@ -1112,10 +1198,10 @@ def run_document_workflow_DEPRECATED(file_id: str):
                 )
             return jsonify({"error": str(exc)}), 500
 
-@doc_review_bp.route("/api/doc_review/upload", methods=["POST"])
-@_api_key_or_login_required
-def upload_document():
-    if "file" not in request.files:
+    @app.route("/api/doc_review/upload", methods=["POST"])
+    @_api_key_or_login_required
+    def upload_document():
+        if "file" not in request.files:
             return jsonify({"error": "file field is required"}), 400
 
         uploaded = request.files["file"]
@@ -1141,10 +1227,10 @@ def upload_document():
             }
         ), 201
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/markdown", methods=["PUT"])
-@_api_key_or_login_required
-        def update_document_markdown(file_id: str):
-    record = _store.load(file_id)
+    @app.route("/api/doc_review/documents/<file_id>/markdown", methods=["PUT"])
+    @_api_key_or_login_required
+    def update_document_markdown(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
 
@@ -1158,7 +1244,7 @@ def upload_document():
         if not isinstance(markdown, str) or not markdown.strip():
             return jsonify({"error": "markdown must be a non-empty string"}), 400
 
-        updated = self.store.update_markdown(
+        updated = _store.update_markdown(
             file_id, 
             markdown, 
             toc_markdown,
@@ -1171,10 +1257,10 @@ def upload_document():
 
         return jsonify({"document": updated})
 
-@doc_review_bp.route("/api/doc_review/chat/<file_id>", methods=["POST"])
-@login_required
-def doc_review_chat(file_id: str):
-    record = _store.load(file_id)
+    @app.route("/api/doc_review/chat/<file_id>", methods=["POST"])
+    @self.login_required
+    def doc_review_chat(file_id: str):
+        record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
 
@@ -1193,7 +1279,7 @@ def doc_review_chat(file_id: str):
             logger.exception("Doc review chat failed for %s: %s", file_id, exc)
             return jsonify({"error": "Chat processing failed"}), 500
 
-        updated = self.store.append_chat_message(file_id, user_message, reply, selection=selection)
+        updated = _store.append_chat_message(file_id, user_message, reply, selection=selection)
         if updated:
             record = updated
 
@@ -1206,10 +1292,10 @@ def doc_review_chat(file_id: str):
             "document_status": record.get("status"),
         })
 
-@doc_review_bp.route("/api/doc_review/ask_riskgpt", methods=["POST"])
-@_api_key_or_login_required
-        def ask_riskgpt():
-    """Ask RiskGPT to improve selected blocks or answer general questions."""
+    @app.route("/api/doc_review/ask_riskgpt", methods=["POST"])
+    @_api_key_or_login_required
+    def ask_riskgpt():
+        """Ask RiskGPT to improve selected blocks or answer general questions."""
         body = request.get_json(force=True, silent=True) or {}
         file_id = body.get("file_id", "").strip()
         selected_block_ids = body.get("selected_block_ids", [])  # Empty for general chat
@@ -1294,10 +1380,10 @@ def doc_review_chat(file_id: str):
             logger.exception("Ask RiskGPT failed for %s: %s", file_id, exc)
             return jsonify({"error": f"RiskGPT processing failed: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/templates", methods=["GET"])
-@_api_key_or_login_required
-def get_templates():
-    """List available templates."""
+    @app.route("/api/doc_review/templates", methods=["GET"])
+    @_api_key_or_login_required
+    def get_templates():
+        """List available templates."""
         try:
             templates = list_templates()
             return jsonify({"templates": templates})
@@ -1305,10 +1391,10 @@ def get_templates():
             logger.exception("Failed to list templates: %s", exc)
             return jsonify({"error": f"Failed to list templates: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/templates/<template_name>/content", methods=["GET"])
-@_api_key_or_login_required
-def get_template_content(template_name: str):
-    """Get markdown template content."""
+    @app.route("/api/doc_review/templates/<template_name>/content", methods=["GET"])
+    @_api_key_or_login_required
+    def get_template_content(template_name: str):
+        """Get markdown template content."""
         try:
             from external.doc_review.template_processor import load_template
             content = load_template(template_name)
@@ -1322,10 +1408,10 @@ def get_template_content(template_name: str):
             logger.exception("Failed to load template content: %s", exc)
             return jsonify({"error": f"Failed to load template: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/templates/upload", methods=["POST"])
-@_api_key_or_login_required
-def upload_template():
-    """Upload a new template."""
+    @app.route("/api/doc_review/templates/upload", methods=["POST"])
+    @_api_key_or_login_required
+    def upload_template():
+        """Upload a new template."""
         if 'file' not in request.files:
             return jsonify({"error": "No file provided"}), 400
         
@@ -1353,10 +1439,10 @@ def upload_template():
             logger.exception("Template upload failed: %s", exc)
             return jsonify({"error": f"Template upload failed: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/templates/<template_name>", methods=["DELETE"])
-@_api_key_or_login_required
-def delete_template(template_name: str):
-    """Delete a template file."""
+    @app.route("/api/doc_review/templates/<template_name>", methods=["DELETE"])
+    @_api_key_or_login_required
+    def delete_template(template_name: str):
+        """Delete a template file."""
         try:
             template_dir = Path("data/templates")
             template_path = template_dir / f"{template_name}.md"
@@ -1373,10 +1459,10 @@ def delete_template(template_name: str):
             logger.exception("Template delete failed: %s", exc)
             return jsonify({"error": f"Template delete failed: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/documents/<file_id>/apply_template", methods=["POST"])
-@_api_key_or_login_required
-        def apply_template(file_id: str):
-    """Apply a template to a document for gap analysis and improvement."""
+    @app.route("/api/doc_review/documents/<file_id>/apply_template", methods=["POST"])
+    @_api_key_or_login_required
+    def apply_template(file_id: str):
+        """Apply a template to a document for gap analysis and improvement."""
         record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
@@ -1410,7 +1496,7 @@ def delete_template(template_name: str):
             processor = TemplateProcessor(api_key)
             
             # Update status
-            self.store.update_status(file_id, "running")
+            _store.update_status(file_id, "running")
             emitter = _make_event_emitter(file_id)
             if emitter:
                 emitter("status", {
@@ -1447,7 +1533,7 @@ def delete_template(template_name: str):
             
             # Save updated state
             source_path = record.get("source_path")
-            updated = self.store.save(file_id, source_path, state, status="ready")
+            updated = _store.save(file_id, source_path, state, status="ready")
             
             if emitter:
                 emitter("status", {
@@ -1474,7 +1560,7 @@ def delete_template(template_name: str):
             return jsonify({"error": f"Template '{template_name}' not found"}), 404
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Template application failed for %s: %s", file_id, exc)
-            self.store.update_status(file_id, "error")
+            _store.update_status(file_id, "error")
             if emitter:
                 emitter("status", {
                     "status": "error",
@@ -1482,11 +1568,11 @@ def delete_template(template_name: str):
                 })
             return jsonify({"error": f"Template application failed: {str(exc)}"}), 500
 
-        # DEPRECATED: Phase 4 not used by React editor
-        # @doc_review_bp.route("/api/doc_review/documents/<file_id>/run_phase4", methods=["POST"])
-        # @_api_key_or_login_required
-def run_phase4_only_DEPRECATED(file_id: str):
-    """DEPRECATED: Run only Phase 4 (output artefacts: TOC, assemble, annotate) workflow."""
+    # DEPRECATED: Phase 4 not used by React editor
+    # @app.route("/api/doc_review/documents/<file_id>/run_phase4", methods=["POST"])
+    # @_api_key_or_login_required
+    def run_phase4_only_DEPRECATED(file_id: str):
+        """DEPRECATED: Run only Phase 4 (output artefacts: TOC, assemble, annotate) workflow."""
         record = _store.load(file_id)
         if not record:
             return jsonify({"error": "Document not found"}), 404
@@ -1530,7 +1616,7 @@ def run_phase4_only_DEPRECATED(file_id: str):
         emitter = _make_event_emitter(file_id)
         
         try:
-            self.store.update_status(file_id, "running")
+            _store.update_status(file_id, "running")
             
             # Initialize state from existing data
             state = _agent._initialise_state(state_input)
@@ -1553,7 +1639,7 @@ def run_phase4_only_DEPRECATED(file_id: str):
             state = _agent._node_assemble_improved_markdown(state)
             state = _agent._node_annotate_markdown_for_ui(state)
             
-            updated = self.store.save(file_id, source_path, state, status="ready")
+            updated = _store.save(file_id, source_path, state, status="ready")
             if emitter:
                 emitter(
                     "status",
@@ -1565,7 +1651,7 @@ def run_phase4_only_DEPRECATED(file_id: str):
             return jsonify({"document": updated})
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception("Phase 4 run failed for %s", file_id)
-            self.store.update_status(file_id, "error")
+            _store.update_status(file_id, "error")
             if emitter:
                 emitter(
                     "log",
@@ -1584,20 +1670,20 @@ def run_phase4_only_DEPRECATED(file_id: str):
                 )
             return jsonify({"error": str(exc)}), 500
 
-@doc_review_bp.route("/api/doc_review/token", methods=["GET"])
-@login_required
-def doc_review_token():
-    token = session.get("token")
+    @app.route("/api/doc_review/token", methods=["GET"])
+    @self.login_required
+    def doc_review_token():
+        token = session.get("token")
         if not token:
             return jsonify({"error": "No active session"}), 401
         response = jsonify({"token": token})
         response.set_cookie("mcp_token", token, httponly=False, samesite="Lax")
         return response
 
-        # Dev-only token for Socket.IO (no login) guarded by API key
-@doc_review_bp.route("/api/doc_review/dev_token", methods=["GET"])
-def doc_review_dev_token():
-    api_key = request.headers.get('X-API-Key')
+    # Dev-only token for Socket.IO (no login) guarded by API key
+    @app.route("/api/doc_review/dev_token", methods=["GET"])
+    def doc_review_dev_token():
+        api_key = request.headers.get('X-API-Key')
         if api_key != 'docreview_dev_key_12345':
             return jsonify({"error": "Unauthorized"}), 401
         try:
@@ -1615,10 +1701,10 @@ def doc_review_dev_token():
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
 
-@doc_review_bp.route("/api/doc_review/prompts", methods=["GET"])
-@_api_key_or_login_required
-def list_prompts():
-    """List all available prompts."""
+    @app.route("/api/doc_review/prompts", methods=["GET"])
+    @_api_key_or_login_required
+    def list_prompts():
+        """List all available prompts."""
         try:
             prompts_dir = Path("external/products/doc_review/prompts")
             if not prompts_dir.exists():
@@ -1639,10 +1725,10 @@ def list_prompts():
             logger.exception("Failed to list prompts: %s", exc)
             return jsonify({"error": f"Failed to list prompts: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/prompts/<prompt_name>", methods=["GET"])
-@_api_key_or_login_required
-def get_prompt(prompt_name: str):
-    """Get prompt content by name."""
+    @app.route("/api/doc_review/prompts/<prompt_name>", methods=["GET"])
+    @_api_key_or_login_required
+    def get_prompt(prompt_name: str):
+        """Get prompt content by name."""
         try:
             prompts_dir = Path("external/products/doc_review/prompts")
             
@@ -1664,10 +1750,10 @@ def get_prompt(prompt_name: str):
             logger.exception("Failed to get prompt: %s", exc)
             return jsonify({"error": f"Failed to get prompt: {str(exc)}"}), 500
 
-@doc_review_bp.route("/api/doc_review/prompts/<prompt_name>", methods=["PUT"])
-@_api_key_or_login_required
-        def update_prompt(prompt_name: str):
-    """Update prompt content."""
+    @app.route("/api/doc_review/prompts/<prompt_name>", methods=["PUT"])
+    @_api_key_or_login_required
+    def update_prompt(prompt_name: str):
+        """Update prompt content."""
         try:
             # Accept plain text body
             content = request.get_data(as_text=True)
@@ -1701,14 +1787,14 @@ def get_prompt(prompt_name: str):
             logger.exception("Failed to update prompt: %s", exc)
             return jsonify({"error": f"Failed to update prompt: {str(exc)}"}), 500
 
-        # ===================================================================
-        # COMMENT MANAGEMENT ROUTES
-        # ===================================================================
+    # ===================================================================
+    # COMMENT MANAGEMENT ROUTES
+    # ===================================================================
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments", methods=["GET"])
-@_api_key_or_login_required
-def list_comments(file_id):
-    """List all comments for a document, optionally filtered by block_id."""
+    @app.route("/api/doc_review/<file_id>/comments", methods=["GET"])
+    @_api_key_or_login_required
+    def list_comments(file_id):
+        """List all comments for a document, optionally filtered by block_id."""
         try:
             block_id = request.args.get("block_id")
             comments = _comments.list_comments(file_id, block_id)
@@ -1717,10 +1803,10 @@ def list_comments(file_id):
             logger.error("Error listing comments: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments", methods=["POST"])
-@_api_key_or_login_required
-        def add_comment(file_id):
-    """Add a new comment to a block."""
+    @app.route("/api/doc_review/<file_id>/comments", methods=["POST"])
+    @_api_key_or_login_required
+    def add_comment(file_id):
+        """Add a new comment to a block."""
         try:
             data = request.get_json() or {}
             block_id = data.get("block_id")
@@ -1739,19 +1825,19 @@ def list_comments(file_id):
             )
             
             # Emit socket event for real-time updates
-            if self.socketio:
+            if _socketio:
                 room = f"doc_review:{file_id}"
-                self.socketio.emit("comment:added", comment, room=room)
+                _socketio.emit("comment:added", comment, room=room)
             
             return jsonify(comment), 201
         except Exception as e:
             logger.error("Error adding comment: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments/<comment_id>/reply", methods=["POST"])
-@_api_key_or_login_required
-        def add_reply(file_id, comment_id):
-    """Add a reply to a comment."""
+    @app.route("/api/doc_review/<file_id>/comments/<comment_id>/reply", methods=["POST"])
+    @_api_key_or_login_required
+    def add_reply(file_id, comment_id):
+        """Add a reply to a comment."""
         try:
             data = request.get_json() or {}
             content = data.get("content", "")
@@ -1765,57 +1851,57 @@ def list_comments(file_id):
                 return jsonify({"error": "Comment not found"}), 404
             
             # Emit socket event
-            if self.socketio:
+            if _socketio:
                 room = f"doc_review:{file_id}"
-                self.socketio.emit("comment:reply_added", comment, room=room)
+                _socketio.emit("comment:reply_added", comment, room=room)
             
             return jsonify(comment), 200
         except Exception as e:
             logger.error("Error adding reply: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments/<comment_id>/resolve", methods=["POST"])
-@_api_key_or_login_required
-        def resolve_comment(file_id, comment_id):
-    """Toggle resolved status of a comment."""
+    @app.route("/api/doc_review/<file_id>/comments/<comment_id>/resolve", methods=["POST"])
+    @_api_key_or_login_required
+    def resolve_comment(file_id, comment_id):
+        """Toggle resolved status of a comment."""
         try:
             comment = _comments.resolve_comment(file_id, comment_id)
             if not comment:
                 return jsonify({"error": "Comment not found"}), 404
             
             # Emit socket event
-            if self.socketio:
+            if _socketio:
                 room = f"doc_review:{file_id}"
-                self.socketio.emit("comment:resolved", comment, room=room)
+                _socketio.emit("comment:resolved", comment, room=room)
             
             return jsonify(comment), 200
         except Exception as e:
             logger.error("Error resolving comment: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments/<comment_id>", methods=["DELETE"])
-@_api_key_or_login_required
-def delete_comment(file_id, comment_id):
-    """Delete a comment."""
+    @app.route("/api/doc_review/<file_id>/comments/<comment_id>", methods=["DELETE"])
+    @_api_key_or_login_required
+    def delete_comment(file_id, comment_id):
+        """Delete a comment."""
         try:
             success = _comments.delete_comment(file_id, comment_id)
             if not success:
                 return jsonify({"error": "Comment not found"}), 404
             
             # Emit socket event
-            if self.socketio:
+            if _socketio:
                 room = f"doc_review:{file_id}"
-                self.socketio.emit("comment:deleted", {"comment_id": comment_id}, room=room)
+                _socketio.emit("comment:deleted", {"comment_id": comment_id}, room=room)
             
             return jsonify({"success": True}), 200
         except Exception as e:
             logger.error("Error deleting comment: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments/<comment_id>", methods=["PATCH"])
-@_api_key_or_login_required
-        def update_comment(file_id, comment_id):
-    """Update a comment's content."""
+    @app.route("/api/doc_review/<file_id>/comments/<comment_id>", methods=["PATCH"])
+    @_api_key_or_login_required
+    def update_comment(file_id, comment_id):
+        """Update a comment's content."""
         try:
             data = request.get_json() or {}
             content = data.get("content")
@@ -1828,19 +1914,19 @@ def delete_comment(file_id, comment_id):
                 return jsonify({"error": "Comment not found"}), 404
             
             # Emit socket event
-            if self.socketio:
+            if _socketio:
                 room = f"doc_review:{file_id}"
-                self.socketio.emit("comment:updated", comment, room=room)
+                _socketio.emit("comment:updated", comment, room=room)
             
             return jsonify(comment), 200
         except Exception as e:
             logger.error("Error updating comment: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/comments/counts", methods=["GET"])
-@_api_key_or_login_required
-def get_comment_counts(file_id):
-    """Get comment counts by block."""
+    @app.route("/api/doc_review/<file_id>/comments/counts", methods=["GET"])
+    @_api_key_or_login_required
+    def get_comment_counts(file_id):
+        """Get comment counts by block."""
         try:
             counts = _comments.get_comment_count_by_block(file_id)
             return jsonify({"counts": counts}), 200
@@ -1848,14 +1934,14 @@ def get_comment_counts(file_id):
             logger.error("Error getting comment counts: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-        # ===================================================================
-        # AI SUGGESTIONS MANAGEMENT ROUTES
-        # ===================================================================
+    # ===================================================================
+    # AI SUGGESTIONS MANAGEMENT ROUTES
+    # ===================================================================
 
-@doc_review_bp.route("/api/doc_review/<file_id>/ai_suggestions", methods=["GET", "OPTIONS"])
-@_api_key_or_login_required
-def list_ai_suggestions(file_id):
-    """List all AI suggestions for a document."""
+    @app.route("/api/doc_review/<file_id>/ai_suggestions", methods=["GET", "OPTIONS"])
+    @_api_key_or_login_required
+    def list_ai_suggestions(file_id):
+        """List all AI suggestions for a document."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
@@ -1866,10 +1952,10 @@ def list_ai_suggestions(file_id):
             logger.error("Error listing AI suggestions: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/ai_suggestions", methods=["POST", "OPTIONS"])
-@_api_key_or_login_required
-        def add_ai_suggestion(file_id):
-    """Add a new AI suggestion."""
+    @app.route("/api/doc_review/<file_id>/ai_suggestions", methods=["POST", "OPTIONS"])
+    @_api_key_or_login_required
+    def add_ai_suggestion(file_id):
+        """Add a new AI suggestion."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
@@ -1893,10 +1979,10 @@ def list_ai_suggestions(file_id):
             logger.error("Error adding AI suggestion: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/ai_suggestions/<suggestion_id>", methods=["PATCH", "OPTIONS"])
-@_api_key_or_login_required
-        def update_ai_suggestion_status(file_id, suggestion_id):
-    """Update the status of an AI suggestion (accept/reject)."""
+    @app.route("/api/doc_review/<file_id>/ai_suggestions/<suggestion_id>", methods=["PATCH", "OPTIONS"])
+    @_api_key_or_login_required
+    def update_ai_suggestion_status(file_id, suggestion_id):
+        """Update the status of an AI suggestion (accept/reject)."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
@@ -1915,10 +2001,10 @@ def list_ai_suggestions(file_id):
             logger.error("Error updating AI suggestion: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/ai_suggestions/<suggestion_id>", methods=["DELETE", "OPTIONS"])
-@_api_key_or_login_required
-def delete_ai_suggestion(file_id, suggestion_id):
-    """Delete an AI suggestion."""
+    @app.route("/api/doc_review/<file_id>/ai_suggestions/<suggestion_id>", methods=["DELETE", "OPTIONS"])
+    @_api_key_or_login_required
+    def delete_ai_suggestion(file_id, suggestion_id):
+        """Delete an AI suggestion."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
@@ -1931,12 +2017,12 @@ def delete_ai_suggestion(file_id, suggestion_id):
             logger.error("Error deleting AI suggestion: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-        # ===== Chat History Routes =====
+    # ===== Chat History Routes =====
 
-@doc_review_bp.route("/api/doc_review/<file_id>/chat", methods=["GET", "OPTIONS"])
-@_api_key_or_login_required
-def list_chat_messages(file_id):
-    """List all chat messages for a document."""
+    @app.route("/api/doc_review/<file_id>/chat", methods=["GET", "OPTIONS"])
+    @_api_key_or_login_required
+    def list_chat_messages(file_id):
+        """List all chat messages for a document."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
@@ -1946,10 +2032,10 @@ def list_chat_messages(file_id):
             logger.error("Error listing chat messages: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/chat", methods=["POST", "OPTIONS"])
-@_api_key_or_login_required
-        def add_chat_message(file_id):
-    """Add a new chat message."""
+    @app.route("/api/doc_review/<file_id>/chat", methods=["POST", "OPTIONS"])
+    @_api_key_or_login_required
+    def add_chat_message(file_id):
+        """Add a new chat message."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
@@ -1973,10 +2059,10 @@ def list_chat_messages(file_id):
             logger.error("Error adding chat message: %s", e, exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-@doc_review_bp.route("/api/doc_review/<file_id>/chat/clear", methods=["POST", "OPTIONS"])
-@_api_key_or_login_required
-        def clear_chat_messages(file_id):
-    """Clear all chat messages for a document."""
+    @app.route("/api/doc_review/<file_id>/chat/clear", methods=["POST", "OPTIONS"])
+    @_api_key_or_login_required
+    def clear_chat_messages(file_id):
+        """Clear all chat messages for a document."""
         if request.method == 'OPTIONS':
             return '', 200
         try:
