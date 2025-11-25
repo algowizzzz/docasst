@@ -1359,7 +1359,66 @@ class DocReviewAgent:
         """Call a tool directly (replaces MCP tool calls)."""
         try:
             # Direct tool calls (no MCP abstraction)
-            if tool_name == "convert_to_markdown":
+            if tool_name == "detect_file_type":
+                import mimetypes
+                from pathlib import Path
+                
+                file_id = payload.get("file_id", "")
+                source_path = Path(payload.get("source_path", "")).expanduser().resolve()
+                
+                if not source_path.exists():
+                    raise FileNotFoundError(f"Source file not found: {source_path}")
+                
+                DEFAULT_EXTENSION_MAP = {
+                    ".pdf": "pdf",
+                    ".docx": "docx",
+                    ".pptx": "pptx",
+                    ".md": "md",
+                    ".markdown": "md",
+                    ".txt": "txt",
+                    ".csv": "csv",
+                }
+                
+                confidence = 0.3
+                detected_via = "fallback"
+                
+                ext = source_path.suffix.lower()
+                if ext in DEFAULT_EXTENSION_MAP:
+                    file_type = DEFAULT_EXTENSION_MAP[ext]
+                    confidence = 0.9
+                    detected_via = "extension"
+                else:
+                    mimetype, _ = mimetypes.guess_type(str(source_path))
+                    if mimetype:
+                        detected_via = "mimetype"
+                        confidence = 0.6
+                        if "pdf" in mimetype:
+                            file_type = "pdf"
+                        elif "word" in mimetype or "doc" in mimetype:
+                            file_type = "docx"
+                        elif "presentation" in mimetype or "powerpoint" in mimetype:
+                            file_type = "pptx"
+                        elif "markdown" in mimetype:
+                            file_type = "md"
+                        elif mimetype.startswith("text/"):
+                            file_type = "txt"
+                        else:
+                            file_type = "unknown"
+                    else:
+                        file_type = "unknown"
+                
+                self.logger.info(
+                    "detect_file_type: file_id=%s path=%s ext=%s type=%s",
+                    file_id, source_path, ext, file_type
+                )
+                
+                return {
+                    "file_id": file_id,
+                    "file_type": file_type,
+                    "confidence": confidence,
+                    "detected_via": detected_via,
+                }
+            elif tool_name == "convert_to_markdown":
                 from tools.pdf_processor import convert_pdf_to_json
                 pdf_path = payload.get("source_path") or payload.get("pdf_path")
                 output_dir = payload.get("output_dir", "data/documents")

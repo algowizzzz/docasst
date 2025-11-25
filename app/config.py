@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import Any, Dict
 
 import yaml
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+env_file = Path(__file__).parent.parent / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
 
 
 def load_config() -> Dict[str, Any]:

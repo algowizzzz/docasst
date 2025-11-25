@@ -325,7 +325,7 @@ def doc_review_dashboard():
 def doc_review_documents():
     """Documents list page - Flask template version"""
     # Check feature flag
-    if __should_use_flask_ui('documents'):
+    if _should_use_flask_ui('documents'):
         try:
             # Load documents from store
             documents = _store.list_documents()
@@ -351,7 +351,7 @@ def doc_review_documents():
 def doc_review_workspace(file_id: Optional[str] = None):
     """Workspace page with editor island - Flask template version"""
     # Check feature flag
-    if __should_use_flask_ui('workspace'):
+    if _should_use_flask_ui('workspace'):
         try:
             doc_state_json = "{}"
             
@@ -391,7 +391,7 @@ def doc_review_workspace(file_id: Optional[str] = None):
 @login_required
 def doc_review_prompts():
     """Prompts page - Flask template version"""
-    if __should_use_flask_ui('prompts'):
+    if _should_use_flask_ui('prompts'):
         return render_template("doc_review_prompts.html")
     else:
         from flask import redirect
@@ -401,7 +401,7 @@ def doc_review_prompts():
 @login_required
 def doc_review_settings():
     """Settings page - Flask template version"""
-    if __should_use_flask_ui('settings'):
+    if _should_use_flask_ui('settings'):
         return render_template("doc_review_settings.html")
     else:
         from flask import redirect
