@@ -99,9 +99,13 @@ def _api_key_or_login_required(f):
         if api_key == 'docreview_dev_key_12345':
             return f(*args, **kwargs)
         
-        # Fall back to session login
-        if 'user' not in session:
-            return jsonify({"error": "Authentication required"}), 401
+        # Fall back to session login - check for username or token
+        if 'username' not in session and 'token' not in session:
+            # For API calls, return JSON error instead of redirect
+            if request.path.startswith('/api/'):
+                return jsonify({"error": "Authentication required"}), 401
+            from flask import redirect, url_for
+            return redirect(url_for('auth.login'))
         
         return f(*args, **kwargs)
     return wrapper
