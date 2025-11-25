@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Flask
+instance/
+.webassets-cache
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application
+data/documents/*.json
+data/documents/*.pdf
+data/uploads/*
+!data/documents/.gitkeep
+!data/uploads/.gitkeep
+logs/
+*.log
+
+# Editor
+editor/node_modules/
+editor/dist/
+editor/build/
+
+# Config (keep example)
+config/config.yaml
+!config/config.example.yaml
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/

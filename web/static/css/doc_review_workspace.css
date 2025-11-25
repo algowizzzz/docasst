@@ -1,0 +1,757 @@
+/* ============================================
+   Design System Tokens
+   ============================================ */
+:root {
+    /* Colors */
+    --primary: #0d6efd;
+    --primary-hover: #0b5ed7;
+    --primary-active: #0a58ca;
+    --secondary: #6c757d;
+    --success: #198754;
+    --warning: #ffc107;
+    --danger: #dc3545;
+    
+    /* Neutral Colors */
+    --white: #ffffff;
+    --gray-50: #f8f9fa;
+    --gray-100: #e9ecef;
+    --gray-200: #dee2e6;
+    --gray-300: #ced4da;
+    --gray-400: #adb5bd;
+    --gray-500: #6c757d;
+    --gray-600: #495057;
+    --gray-700: #212529;
+    
+    /* Text Colors */
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-muted: #adb5bd;
+    
+    /* Spacing (4px base unit) */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    
+    /* Typography */
+    --font-size-xs: 10px;
+    --font-size-sm: 12px;
+    --font-size-base: 14px;
+    --font-size-lg: 16px;
+    --font-size-xl: 18px;
+    --font-size-2xl: 20px;
+    --font-size-3xl: 24px;
+    
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
+    
+    --line-height-tight: 1.25;
+    --line-height-normal: 1.5;
+    --line-height-relaxed: 1.75;
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 4px 6px rgba(0, 0, 0, 0.1);
+    
+    /* Border Radius */
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-full: 9999px;
+    
+    /* Transitions */
+    --transition-fast: 150ms ease;
+    --transition-base: 200ms ease;
+    --transition-slow: 300ms ease-in-out;
+}
+
+/* ============================================
+   Workspace Layout Styles
+   ============================================ */
+.workspace-container {
+    display: flex !important;
+    height: calc(100vh - 120px) !important;
+    position: relative !important;
+    overflow: visible !important;
+    margin-top: 0 !important;
+    background: var(--white) !important;
+    border: none !important;
+    outline: none !important;
+}
+
+/* Remove any debug borders, red styling, and focus outlines - AGGRESSIVE */
+.workspace-container,
+#workspaceContainer,
+.workspace-pane,
+.workspace-pane-center,
+.workspace-pane-left,
+.workspace-pane-right,
+#centerPane,
+#leftPane,
+#rightPane,
+.workspace-header,
+#workspaceHeader,
+main,
+main:focus,
+main:focus-visible,
+main:focus-within,
+main.container-fluid,
+main.container-fluid:focus,
+main.container-fluid:focus-visible {
+    border: none !important;
+    outline: none !important;
+    outline-offset: 0 !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+}
+
+/* Specifically target the main element (centerPane) - HIGHEST SPECIFICITY */
+main#centerPane,
+main#centerPane:focus,
+main#centerPane:focus-visible,
+main#centerPane:focus-within,
+main.workspace-pane-center,
+main.workspace-pane-center:focus,
+main.workspace-pane-center:focus-visible,
+body main.container-fluid,
+body main.container-fluid:focus,
+body main.container-fluid:focus-visible {
+    outline: none !important;
+    outline-offset: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-color: transparent !important;
+}
+
+/* Remove ALL possible red borders from ANY element */
+* {
+    border-color: inherit !important;
+}
+
+.workspace-container *,
+#workspaceContainer *,
+main *,
+main.container-fluid * {
+    outline: none !important;
+}
+
+/* Only allow borders on specific UI elements */
+.workspace-pane-left,
+.workspace-pane-right {
+    border-color: var(--gray-200) !important;
+}
+
+/* Only allow gray borders for actual UI elements */
+.workspace-pane-left,
+.workspace-pane-right {
+    border-color: var(--gray-200) !important;
+}
+
+.workspace-header {
+    border-bottom-color: var(--gray-200) !important;
+}
+
+/* Comment highlighting */
+.highlight-comment {
+    animation: highlightPulse 2s ease-in-out;
+    background-color: #fff3cd !important;
+}
+
+@keyframes highlightPulse {
+    0%, 100% { background-color: transparent; }
+    50% { background-color: #fff3cd; }
+}
+
+/* ===== Editor Comment and AI Suggestion Highlights ===== */
+/* Comment highlights - Yellow background with underline (matching React app) */
+#editor-root .has-comments,
+#editor-root .has-comments * {
+    position: relative;
+    background-color: rgba(253, 224, 71, 0.3) !important; /* Yellow background for comments */
+    border-bottom: 2px solid rgb(234, 179, 8) !important; /* Solid yellow underline */
+    padding: 0 2px;
+    border-radius: 3px;
+}
+
+/* AI Suggestion highlights - Blue background with underline */
+#editor-root .ai-suggestion,
+#editor-root .ai-suggestion * {
+    position: relative;
+    background-color: rgba(59, 130, 246, 0.3) !important; /* Blue background for AI suggestions */
+    border-bottom: 2px solid rgb(59, 130, 246) !important; /* Solid blue underline */
+    padding: 0 2px;
+    border-radius: 3px;
+}
+
+/* Applied AI suggestion - darker blue background */
+#editor-root .ai-suggestion-applied,
+#editor-root .ai-suggestion-applied * {
+    position: relative;
+    background-color: rgba(59, 130, 246, 0.25) !important; /* Slightly darker blue for accepted */
+    border-bottom: 2px solid rgb(37, 99, 235) !important; /* Darker blue underline */
+    padding: 0 2px;
+    border-radius: 3px;
+}
+
+/* Rejected AI suggestion - red background with strikethrough */
+#editor-root .ai-suggestion-rejected,
+#editor-root .ai-suggestion-rejected * {
+    position: relative;
+    text-decoration: line-through;
+    background-color: rgba(239, 68, 68, 0.2) !important; /* Red background for rejected */
+    border-bottom: 2px solid rgb(220, 38, 38) !important; /* Red underline */
+    padding: 0 2px;
+    border-radius: 3px;
+    color: #991b1b !important; /* Dark red text */
+}
+
+/* ============================================
+   Comments Panel - Enhanced Design
+   ============================================ */
+#commentsList .card {
+    transition: all var(--transition-base);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+    background: var(--white);
+}
+
+#commentsList .card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--gray-300);
+    transform: translateY(-1px);
+}
+
+#commentsList [data-comment-id] {
+    scroll-margin-top: 20px;
+}
+
+/* ============================================
+   Panes - Enhanced Styling
+   ============================================ */
+.workspace-pane {
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--white);
+    transition: all var(--transition-base);
+}
+
+/* Override for center pane to show header */
+.workspace-pane-center.workspace-pane {
+    overflow: visible;
+}
+
+.workspace-pane-left {
+    width: 280px;
+    min-width: 200px;
+    max-width: 500px;
+    border-right: 1px solid var(--gray-200);
+}
+
+.workspace-pane-center {
+    flex: 1 !important;
+    min-width: 300px !important;
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important; /* Container should clip, but children can scroll */
+    height: 100% !important;
+    outline: none !important;
+    border: none !important;
+}
+
+/* Remove focus outline from center pane (main element) */
+#centerPane,
+#centerPane:focus,
+#centerPane:focus-visible,
+main.workspace-pane-center,
+main.workspace-pane-center:focus,
+main.workspace-pane-center:focus-visible {
+    outline: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* ============================================
+   Header Bar - Enhanced Design
+   ============================================ */
+.workspace-header {
+    flex-shrink: 0 !important;
+    z-index: 1000 !important;
+    background: var(--white) !important;
+    background-color: var(--white) !important;
+    border-bottom: 1px solid var(--gray-200) !important;
+    box-shadow: var(--shadow-sm) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: relative !important;
+    padding: var(--space-5) var(--space-6) !important;
+    width: 100% !important;
+    order: 1 !important;
+    transition: box-shadow var(--transition-base);
+}
+
+.workspace-header:hover {
+    box-shadow: var(--shadow-md) !important;
+}
+
+/* Document Title Styling */
+#documentTitle {
+    font-size: var(--font-size-xl) !important;
+    font-weight: var(--font-weight-semibold) !important;
+    color: var(--text-primary) !important;
+    line-height: var(--line-height-tight) !important;
+    margin-bottom: var(--space-1) !important;
+}
+
+#documentFileId {
+    font-size: var(--font-size-sm) !important;
+    color: var(--text-muted) !important;
+    font-weight: var(--font-weight-normal) !important;
+}
+
+/* Status Badge */
+#documentStatusBadge {
+    font-size: var(--font-size-xs) !important;
+    font-weight: var(--font-weight-medium) !important;
+    padding: var(--space-1) var(--space-3) !important;
+    border-radius: var(--radius-full) !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Header Action Buttons */
+.workspace-header .btn {
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-medium) !important;
+    padding: var(--space-2) var(--space-4) !important;
+    border-radius: var(--radius-md) !important;
+    transition: all var(--transition-base) !important;
+    border: none !important;
+}
+
+.workspace-header .btn-primary {
+    background-color: var(--primary) !important;
+    color: var(--white) !important;
+}
+
+.workspace-header .btn-primary:hover {
+    background-color: var(--primary-hover) !important;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.workspace-header .btn-primary:active {
+    background-color: var(--primary-active) !important;
+    transform: translateY(0);
+}
+
+.workspace-header .btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Force white background, override any yellow/warning classes */
+#workspaceHeader,
+#workspaceHeader *,
+.workspace-header,
+.workspace-header * {
+    background: var(--white) !important;
+    background-color: var(--white) !important;
+    background-image: none !important;
+}
+
+/* Remove Bootstrap warning classes */
+#workspaceHeader.bg-warning,
+#workspaceHeader.alert-warning,
+.workspace-header.bg-warning,
+.workspace-header.alert-warning {
+    background: var(--white) !important;
+    background-color: var(--white) !important;
+}
+
+/* ============================================
+   Mode Switcher - Enhanced Design
+   ============================================ */
+.workspace-header .btn-group {
+    gap: var(--space-1) !important;
+}
+
+.workspace-header .btn-group .btn {
+    font-size: var(--font-size-sm) !important;
+    font-weight: var(--font-weight-medium) !important;
+    padding: var(--space-2) var(--space-4) !important;
+    border-radius: var(--radius-md) !important;
+    border: 1px solid var(--gray-300) !important;
+    background-color: var(--white) !important;
+    color: var(--text-secondary) !important;
+    transition: all var(--transition-base) !important;
+}
+
+.workspace-header .btn-group .btn:hover {
+    background-color: var(--gray-50) !important;
+    border-color: var(--gray-400) !important;
+    color: var(--text-primary) !important;
+}
+
+.workspace-header .btn-group .btn.active {
+    background-color: #0d6efd !important; /* Explicit primary color */
+    border-color: #0d6efd !important;
+    color: #ffffff !important; /* Explicit white text */
+    box-shadow: var(--shadow-sm);
+    font-weight: 500;
+}
+
+.workspace-header .btn-group .btn.active:hover {
+    background-color: var(--primary-hover) !important;
+    border-color: var(--primary-hover) !important;
+}
+
+.workspace-editor-container {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    position: relative !important;
+    min-height: 0 !important; /* Important for flex scrolling */
+    order: 2 !important; /* Ensure editor is after header */
+}
+
+/* Ensure editor doesn't cover header */
+#editor-root {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+/* Override editor's min-h-screen to not cover header */
+.single-doc-editor-content {
+    min-height: auto !important;
+}
+
+.workspace-pane-right {
+    width: 360px;
+    min-width: 300px;
+    max-width: 600px;
+    border-left: 1px solid var(--gray-200);
+}
+
+/* ============================================
+   Resize Handles - Enhanced
+   ============================================ */
+.resize-handle {
+    width: 4px;
+    background: transparent;
+    cursor: col-resize;
+    position: relative;
+    z-index: 10;
+    transition: background-color var(--transition-base);
+}
+
+.resize-handle:hover {
+    background: var(--primary);
+}
+
+.resize-handle-left {
+    border-right: 1px solid var(--gray-200);
+}
+
+.resize-handle-right {
+    border-left: 1px solid var(--gray-200);
+}
+
+.resize-handle.active {
+    background: var(--primary);
+}
+
+/* Collapse Toggles */
+.pane-collapse-toggle {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 0 4px 4px 0;
+    padding: 8px 4px;
+}
+
+.pane-collapse-left {
+    left: 0;
+    border-radius: 0 4px 4px 0;
+}
+
+.pane-collapse-right {
+    right: 0;
+    border-radius: 4px 0 0 4px;
+}
+
+/* Left Pane Content */
+.left-pane-content {
+    height: 100%;
+}
+
+/* Right Pane Content */
+.right-pane-content {
+    height: 100%;
+}
+
+/* Tab content and panes - proper flex layout */
+.tab-content {
+    min-height: 0 !important; /* Allow flex children to shrink */
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* Bootstrap tab panes - ensure only active pane is visible */
+.tab-pane {
+    display: none !important;
+}
+
+.tab-pane.active.show {
+    display: flex !important;
+}
+
+/* Ensure analysis pane is visible when active */
+#analysis-pane.active.show {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Remove extra padding from tab panes */
+#comments-pane,
+#chat-pane,
+#analysis-pane {
+    padding-top: 0 !important;
+    min-height: 0 !important; /* Critical for flex children */
+    flex-direction: column !important;
+    overflow: hidden !important; /* Clip content, let children scroll */
+}
+
+/* Force hide empty state - highest specificity */
+div#analysisContent div#analysisEmpty {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: absolute !important;
+    pointer-events: none !important;
+}
+
+/* Show empty state only when explicitly needed (no d-none on sections) */
+div#analysisContent div#analysisSections.d-none ~ div#analysisEmpty {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 1.25rem 0 !important;
+    position: static !important;
+    pointer-events: auto !important;
+}
+
+/* Ensure sections are visible when not hidden */
+#analysisSections:not(.d-none) {
+    display: block !important;
+    visibility: visible !important;
+}
+
+#commentsListContainer {
+    padding-top: 0 !important;
+}
+
+#chatMessagesContainer {
+    padding-top: 0 !important;
+    min-height: 0 !important; /* Critical for flex scrolling */
+    flex: 1 1 auto !important; /* Take available space */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* Remove top margin from first comment/chat message */
+#commentsList > .card:first-child,
+#commentsList > div:first-child {
+    margin-top: 0 !important;
+}
+
+#chatMessages > .chat-message:first-child {
+    margin-top: 0 !important;
+}
+
+/* Chat input box - ensure it's visible at bottom */
+.chat-input-container,
+#chat-pane > .chat-input-container {
+    flex-shrink: 0 !important; /* Don't shrink input box */
+    margin-top: auto !important; /* Push to bottom */
+    position: relative !important;
+    z-index: 10 !important;
+    background: white !important;
+}
+
+/* Ensure chat messages container takes available space */
+#chat-pane {
+    position: relative !important;
+}
+
+#chat-pane > #chatMessagesContainer {
+    position: relative !important;
+    z-index: 1 !important;
+}
+
+/* ============================================
+   Chat Messages - Enhanced Design
+   ============================================ */
+.chat-message {
+    margin-bottom: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-xl);
+    transition: all var(--transition-base);
+    max-width: 85%;
+    word-wrap: break-word;
+}
+
+.chat-message.user {
+    background: #e7f3ff;
+    margin-left: auto;
+    margin-right: 0;
+    border-bottom-right-radius: var(--radius-sm);
+}
+
+.chat-message.assistant {
+    background: var(--gray-50);
+    margin-left: 0;
+    margin-right: auto;
+    border-bottom-left-radius: var(--radius-sm);
+}
+
+.chat-message:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.chat-message-header {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    margin-bottom: var(--space-2);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.chat-message-content {
+    font-size: var(--font-size-sm);
+    line-height: 1.6;
+    color: var(--text-primary);
+    word-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.chat-message-content p {
+    margin-bottom: var(--space-2);
+    margin-top: 0;
+}
+
+.chat-message-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* ============================================
+   Selected Blocks - Enhanced Design
+   ============================================ */
+.selected-block-badge {
+    display: inline-block;
+    background: #e0e7ff;
+    color: #4338ca;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    margin: var(--space-1);
+    transition: all var(--transition-base);
+}
+
+.selected-block-badge:hover {
+    background: #c7d2fe;
+    transform: scale(1.05);
+}
+
+/* ============================================
+   Analysis Sections - Enhanced Design
+   ============================================ */
+.analysis-section {
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-3);
+    overflow: hidden;
+    transition: all var(--transition-base);
+}
+
+.analysis-section:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.analysis-section-header {
+    padding: var(--space-3);
+    background: var(--white);
+    cursor: pointer;
+    transition: background-color var(--transition-base);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+}
+
+.analysis-section-header:hover {
+    background: var(--gray-50);
+}
+
+.analysis-section-content {
+    padding: var(--space-3);
+    background: var(--gray-50);
+    border-top: 1px solid var(--gray-200);
+    font-size: var(--font-size-sm);
+    line-height: var(--line-height-relaxed);
+    color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .workspace-pane-left {
+        width: 240px;
+    }
+    
+    .workspace-pane-right {
+        width: 320px;
+    }
+}
+
+/* ============================================
+   Editor Container - Enhanced
+   ============================================ */
+#editor-root {
+    min-height: 100%;
+    width: 100%;
+    padding: var(--space-5);
+}
+
+/* Ensure editor content is scrollable */
+.single-doc-editor-root {
+    min-height: 100%;
+}
+
+.single-doc-editor-content {
+    min-height: 100vh;
+}
+

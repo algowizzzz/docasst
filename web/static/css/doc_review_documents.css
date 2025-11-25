@@ -1,0 +1,143 @@
+/* Documents List Page Styles */
+
+.doc-review-documents-page {
+    min-height: calc(100vh - 200px);
+}
+
+/* Loading State */
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    text-align: center;
+}
+
+.loading-container .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+/* Error State */
+.error-container {
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Empty State */
+.empty-container {
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Welcome Banner */
+.welcome-banner {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 0.5rem;
+    padding: 2rem;
+    border: 1px solid #dee2e6;
+}
+
+.welcome-banner .text-primary {
+    background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Icon Badge */
+.icon-badge {
+    width: 2.5rem;
+    height: 2.5rem;
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.icon-badge.blue {
+    background-color: #e7f1ff;
+}
+
+.icon-badge.green {
+    background-color: #d1e7dd;
+}
+
+.icon-badge.purple {
+    background-color: #e2d9f3;
+}
+
+.icon-badge.orange {
+    background-color: #fff3cd;
+}
+
+/* Document Row */
+.document-row {
+    transition: background-color 0.2s;
+}
+
+.document-row:hover {
+    background-color: #f8f9fa;
+}
+
+/* Status Badges */
+.badge {
+    font-size: 0.75rem;
+    padding: 0.35em 0.65em;
+}
+
+/* Table Styles */
+.table th {
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+/* Details/Summary Styling */
+details summary {
+    list-style: none;
+}
+
+details summary::-webkit-details-marker {
+    display: none;
+}
+
+details summary::marker {
+    display: none;
+}
+
+details[open] summary .bi-chevron-right {
+    transform: rotate(90deg);
+    transition: transform 0.2s;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .welcome-banner {
+        padding: 1.5rem;
+    }
+    
+    .welcome-banner h1 {
+        font-size: 1.75rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+}
+

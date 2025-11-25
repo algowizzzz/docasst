@@ -1,0 +1,7 @@
+{
+  "admin": {
+    "password_hash": "pbkdf2:sha256:600000$placeholder$will_be_generated",
+    "email": "admin@example.com"
+  }
+}
+

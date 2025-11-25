@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+
+{% block title %}Document Editor Demo - React Island{% endblock %}
+
+{% block extra_css %}
+<!-- Editor CSS bundle -->
+<link rel="stylesheet" href="{{ url_for('static', filename='js/editor.css') }}?v={{ cache_bust }}">
+<style>
+    .workspace-container {
+        display: flex;
+        height: calc(100vh - 200px);
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f8fafc;
+    }
+    
+    .left-pane {
+        width: 280px;
+        background: white;
+        border-right: 1px solid #e2e8f0;
+        padding: 16px;
+        overflow-y: auto;
+    }
+    
+    .center-pane {
+        flex: 1;
+        background: white;
+        overflow-y: auto;
+        position: relative;
+    }
+    
+    .right-pane {
+        width: 360px;
+        background: white;
+        border-left: 1px solid #e2e8f0;
+        padding: 16px;
+        overflow-y: auto;
+    }
+    
+    .editor-status {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        font-size: 14px;
+        z-index: 1000;
+    }
+    
+    .status-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    
+    .status-idle { background: #94a3b8; }
+    .status-saving { background: #f59e0b; }
+    .status-saved { background: #10b981; }
+    .status-error { background: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h2>Document Editor Demo - React Island Pattern</h2>
+            <p class="text-muted">
+                This demonstrates the editor mounted as a React "island" in a Flask-rendered page.
+                The editor is a standalone bundle that communicates via events and the window API.
+            </p>
+        </div>
+    </div>
+    
+    <div class="workspace-container">
+        <!-- Left Pane - Flask Rendered -->
+        <aside class="left-pane">
+            <h5>Document Info</h5>
+            <div class="mb-3">
+                <strong>File ID:</strong><br>
+                <code>{{ file_id or 'No document selected' }}</code>
+            </div>
+            <div class="mb-3">
+                <strong>Status:</strong><br>
+                <span id="docStatus">{{ doc_status or 'Unknown' }}</span>
+            </div>
+            
+            <hr>
+            
+            <h6>Editor Controls</h6>
+            <button class="btn btn-sm btn-primary w-100 mb-2" onclick="saveDocument()">
+                <i class="bi bi-save"></i> Save Document
+            </button>
+            <button class="btn btn-sm btn-secondary w-100 mb-2" onclick="getDocState()">
+                <i class="bi bi-code"></i> Get DocState (console)
+            </button>
+            <button class="btn btn-sm btn-outline-secondary w-100" onclick="reloadEditor()">
+                <i class="bi bi-arrow-clockwise"></i> Reload Editor
+            </button>
+            
+            <hr>
+            
+            <h6>Event Log</h6>
+            <div id="eventLog" style="font-size: 12px; max-height: 300px; overflow-y: auto;">
+                <div class="text-muted">Editor events will appear here...</div>
+            </div>
+        </aside>
+        
+        <!-- Center Pane - Editor Island -->
+        <main class="center-pane">
+            <div id="editor-root" 
+                 data-doc-state="{{ doc_state_json | safe }}"
+                 data-file-id="{{ file_id or '' }}"
+                 data-read-only="false"
+                 data-auto-save="true">
+                <!-- Editor will mount here -->
+            </div>
+        </main>
+        
+        <!-- Right Pane - Flask Rendered -->
+        <aside class="right-pane">
+            <h5>Instructions</h5>
+            <ol style="font-size: 14px;">
+                <li>Editor is mounted in the center pane</li>
+                <li>Type to edit the document</li>
+                <li>Changes auto-save to backend</li>
+                <li>Check browser console for events</li>
+                <li>Use "Get DocState" to see current state</li>
+            </ol>
+            
+            <hr>
+            
+            <h6>Technical Details</h6>
+            <ul style="font-size: 12px;">
+                <li><strong>Pattern:</strong> React Island</li>
+                <li><strong>Bundle:</strong> editor.js (standalone)</li>
+                <li><strong>Mount:</strong> #editor-root div</li>
+                <li><strong>Communication:</strong> CustomEvents + window.docEditor</li>
+                <li><strong>Backend:</strong> Flask API endpoints</li>
+            </ul>
+        </aside>
+    </div>
+    
+    <!-- Status Indicator -->
+    <div class="editor-status" id="editorStatus">
+        <span class="status-indicator status-idle"></span>
+        <span id="statusText">Ready</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Editor JavaScript bundle -->
+<script src="{{ url_for('static', filename='js/editor.iife.js') }}?v={{ cache_bust }}"></script>
+
+<script>
+// Editor event handlers and utilities
+    
+let eventCount = 0;
+
+// Listen for editor events
+document.addEventListener('docEditor:change', (event) => {
+    eventCount++;
+    const { docState, fileId } = event.detail;
+    logEvent('Document Changed', `File: ${fileId}, Blocks: ${docState.blocks.length}`);
+    updateStatus('saving', 'Saving...');
+});
+
+document.addEventListener('docEditor:save', (event) => {
+    const { fileId, success, error } = event.detail;
+    if (success) {
+        logEvent('Saved', `File: ${fileId}`);
+        updateStatus('saved', 'Saved');
+        setTimeout(() => updateStatus('idle', 'Ready'), 2000);
+    } else {
+        logEvent('Save Failed', error?.message || 'Unknown error');
+        updateStatus('error', 'Error');
+        setTimeout(() => updateStatus('idle', 'Ready'), 3000);
+    }
+});
+
+document.addEventListener('docEditor:selection', (event) => {
+    const { selectedText, blockIds } = event.detail;
+    if (selectedText) {
+        logEvent('Selection', `Text: "${selectedText.substring(0, 50)}..."`);
+    }
+});
+
+document.addEventListener('docEditor:commentClick', (event) => {
+    const { commentIds } = event.detail;
+    logEvent('Comment Click', `Comment IDs: ${commentIds.join(', ')}`);
+});
+
+// Utility functions
+function logEvent(type, message) {
+    const log = document.getElementById('eventLog');
+    const time = new Date().toLocaleTimeString();
+    const entry = document.createElement('div');
+    entry.className = 'mb-2 p-2 bg-light rounded';
+    entry.innerHTML = `<strong>${time}</strong> - <strong>${type}:</strong> ${message}`;
+    log.insertBefore(entry, log.firstChild);
+    
+    // Keep only last 20 events
+    while (log.children.length > 20) {
+        log.removeChild(log.lastChild);
+    }
+}
+
+function updateStatus(status, text) {
+    const indicator = document.querySelector('.status-indicator');
+    const statusText = document.getElementById('statusText');
+    
+    indicator.className = `status-indicator status-${status}`;
+    statusText.textContent = text;
+}
+
+function saveDocument() {
+    if (window.docEditor) {
+        window.docEditor.save()
+            .then(() => {
+                logEvent('Manual Save', 'Triggered via button');
+            })
+            .catch((err) => {
+                logEvent('Manual Save Failed', err.message);
+            });
+    } else {
+        logEvent('Error', 'Editor not initialized');
+    }
+}
+
+function getDocState() {
+    if (window.docEditor) {
+        const docState = window.docEditor.getDocState();
+        console.log('Current DocState:', docState);
+        logEvent('DocState Retrieved', 'Check browser console');
+    } else {
+        logEvent('Error', 'Editor not initialized');
+    }
+}
+
+function reloadEditor() {
+    location.reload();
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    logEvent('Page Loaded', 'Waiting for editor to initialize...');
+    
+    // Check if editor loaded
+    setTimeout(() => {
+        if (window.docEditor) {
+            logEvent('Editor Ready', 'Editor initialized successfully');
+            updateStatus('idle', 'Ready');
+        } else {
+            logEvent('Warning', 'Editor not found. Check if editor.js loaded correctly.');
+            updateStatus('error', 'Editor Not Found');
+        }
+    }, 1000);
+});
+</script>
+{% endblock %}
+

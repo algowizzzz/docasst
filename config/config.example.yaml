@@ -1,0 +1,18 @@
+# Doc Review Assistant Configuration
+
+# Application Settings
+secret_key: "change-this-in-production"
+debug: false
+
+# LLM Settings
+anthropic_api_key: ""  # Set via ANTHROPIC_API_KEY env var
+
+# Storage Settings
+data_dir: "data/documents"
+upload_dir: "data/uploads"
+max_upload_size: 52428800  # 50 MB
+
+# Server Settings
+host: "0.0.0.0"
+port: 8000
+

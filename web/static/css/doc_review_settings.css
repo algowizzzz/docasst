@@ -1,0 +1,18 @@
+/* Settings Page Styles */
+
+.settings-page {
+    min-height: calc(100vh - 200px);
+    padding: 2rem 0;
+}
+
+.settings-page .card {
+    border: 1px solid #dee2e6;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.settings-page .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    font-weight: 600;
+}
+
