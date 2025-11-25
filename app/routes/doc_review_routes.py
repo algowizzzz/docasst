@@ -259,31 +259,8 @@ def _convert_to_doc_state(record: Dict[str, Any]) -> Dict[str, Any]:
     return doc_state
 
 def _should_use_flask_ui(feature: str = 'default') -> bool:
-    """
-    Check if Flask UI should be used for a specific feature.
-    
-    Args:
-        feature: Feature name ('documents', 'workspace', 'prompts', 'settings')
-                 or 'default' for general flag
-    
-    Returns:
-        True if Flask UI should be used, False for React app
-    """
-    from core.properties_configurator import PropertiesConfigurator
-    
-    # Get properties configurator
-    props = PropertiesConfigurator(['config/application.properties'])
-    
-    # Check specific feature flag first
-    if feature != 'default':
-        flag_name = f'doc_review.use_flask_{feature}'
-        specific_flag = props.get(flag_name, None)
-        if specific_flag is not None:
-            return specific_flag.lower() == 'true'
-    
-    # Fall back to general flag
-    general_flag = props.get('doc_review.use_flask_ui', 'true')
-    return general_flag.lower() == 'true'
+    """Always use Flask UI in standalone version."""
+    return True
 
 def register_routes(app):  # noqa: D401
     """Register document review routes."""
