@@ -16,7 +16,7 @@ def login():
         if auth_manager.authenticate(username, password):
             session['username'] = username
             session['token'] = 'authenticated'  # Simple token
-            return redirect(url_for('doc_review.documents'))
+            return redirect(url_for('doc_review.doc_review_documents'))
         else:
             return render_template('login.html', error='Invalid credentials')
     
