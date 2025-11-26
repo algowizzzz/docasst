@@ -758,6 +758,46 @@ def run_phase1_only(file_id: str):
             run_id=file_id,
             template_id=template_id,
         )
+        
+        # If Phase 1 completed successfully, automatically run Phase 2 to generate analysis sections
+        if state.get("phase1_status") == "success" and state.get("control") == "completed":
+            try:
+                logger.info("Phase 1 completed, running Phase 2 for analysis sections...")
+                if emitter:
+                    emitter(
+                        "log",
+                        {
+                            "node": "workflow",
+                            "message": "Phase 1 completed. Running Phase 2 analysis...",
+                            "level": "info",
+                        },
+                    )
+                
+                # Run Phase 2 to generate the 6 analysis sections
+                state = _agent.run_phase2(state=state, section_scope=None)
+                
+                if emitter:
+                    emitter(
+                        "log",
+                        {
+                            "node": "workflow",
+                            "message": "Phase 2 completed. Analysis sections generated.",
+                            "level": "info",
+                        },
+                    )
+            except Exception as phase2_exc:
+                logger.exception("Phase 2 failed for %s (continuing anyway)", file_id)
+                # Don't fail the whole request if Phase 2 fails - Phase 1 is still successful
+                if emitter:
+                    emitter(
+                        "log",
+                        {
+                            "node": "workflow",
+                            "message": f"Phase 2 failed: {str(phase2_exc)}",
+                            "level": "warning",
+                        },
+                    )
+        
         # Save the completed state
         updated = _store.save(file_id, source_path, state, status="ready")
         if emitter:
@@ -765,7 +805,7 @@ def run_phase1_only(file_id: str):
                 "status",
                 {
                     "status": "ready",
-                    "message": "Phase 1 completed successfully",
+                    "message": "Ingestion and analysis completed successfully",
                 },
             )
             # Also notify UI that raw markdown is available (if present)
@@ -800,15 +840,21 @@ def run_phase1_only(file_id: str):
 @doc_review_bp.route("/api/doc_review/documents/<file_id>/analyze", methods=["POST"])
 @_api_key_or_login_required
 def analyze_document(file_id: str):
-    """Run full document analysis workflow (TOC review + 4 holistic checks + synthesis)."""
+    """Run Phase 2 analysis to generate the 6 analysis sections."""
     record = _store.load(file_id)
     if not record:
         return jsonify({"error": "Document not found"}), 404
     
-    # Load existing state
-    existing_state = record.get("state", {})
+    # Check if Phase 1 is completed (needed for Phase 2)
+    existing_state = record.get("state", {}) or {}
     if not existing_state:
-        return jsonify({"error": "Document must be ingested first. Please run Phase 1."}), 400
+        return jsonify({"error": "Phase 1 must be completed before running analysis. Please run ingestion first."}), 400
+    
+    if existing_state.get("phase1_status") != "success":
+        return jsonify({"error": "Phase 1 must be completed successfully before running analysis."}), 400
+    
+    body = request.get_json(force=True, silent=True) or {}
+    section_scope = body.get("section_scope")  # Optional: specific sections to review
     
     source_path = record.get("source_path")
     if not source_path:
@@ -820,15 +866,21 @@ def analyze_document(file_id: str):
     try:
         _store.update_status(file_id, "running")
         
-        # Use existing state from store
-        state = existing_state.copy()
-        state["doc_id"] = file_id
+        if emitter:
+            emitter(
+                "log",
+                {
+                    "node": "workflow",
+                    "message": "Starting Phase 2 analysis...",
+                    "level": "info",
+                },
+            )
         
-        # Always start analysis workflow from phase1_toc_review
-        state["control"] = "phase1_toc_review"
-        
-        # Run orchestrator from current control point
-        state = _agent.orchestrate(state)
+        # Run Phase 2 using the agent's method
+        state = _agent.run_phase2(
+            state=existing_state,
+            section_scope=section_scope,
+        )
         
         # Save the completed state
         updated = _store.save(file_id, source_path, state, status="ready")
@@ -839,18 +891,20 @@ def analyze_document(file_id: str):
                 {
                     "status": "ready",
                     "message": "Analysis completed successfully",
-                    "control": state.get("control"),
+                },
+            )
+            emitter(
+                "log",
+                {
+                    "node": "workflow",
+                    "message": "Phase 2 analysis completed. Analysis sections generated.",
+                    "level": "info",
                 },
             )
         
-        return jsonify({
-            "status": "completed",
-            "control": state.get("control"),
-            "document": updated
-        })
-        
+        return jsonify({"document": updated})
     except Exception as exc:  # pylint: disable=broad-except
-        logger.exception("Document analysis failed for %s", file_id)
+        logger.exception("Analysis failed for %s", file_id)
         _store.update_status(file_id, "error")
         if emitter:
             emitter(
@@ -1222,8 +1276,17 @@ def update_document_markdown(file_id: str):
     accepted_suggestions = payload.get("accepted_suggestions")  # New: track accepted suggestions
     rejected_suggestions = payload.get("rejected_suggestions")  # New: track rejected suggestions
 
-    if not isinstance(markdown, str) or not markdown.strip():
-        return jsonify({"error": "markdown must be a non-empty string"}), 400
+    # Allow empty markdown if block_metadata is provided (editor saves blocks, not markdown)
+    if not isinstance(markdown, str):
+        return jsonify({"error": "markdown must be a string"}), 400
+    
+    # If markdown is empty but block_metadata exists, generate markdown from blocks
+    if not markdown.strip() and block_metadata:
+        from tools.file_utils import blocks_to_markdown
+        markdown = blocks_to_markdown(block_metadata)
+    
+    if not markdown.strip():
+        return jsonify({"error": "markdown or block_metadata is required"}), 400
 
     updated = _store.update_markdown(
         file_id, 
@@ -1295,17 +1358,31 @@ def ask_riskgpt():
     try:
         document_state = record.get("state", {}) or {}
         full_markdown = document_state.get("raw_markdown", "")
-        block_metadata = document_state.get("block_metadata", [])
         
+        # If no markdown, generate from blocks
         if not full_markdown:
-            return jsonify({"error": "Document has no markdown content"}), 400
+            structure = document_state.get("structure", {})
+            block_metadata = structure.get("block_metadata", [])
+            if block_metadata:
+                from tools.file_utils import blocks_to_markdown
+                full_markdown = blocks_to_markdown(block_metadata)
+                # Cache it in state for future use
+                document_state["raw_markdown"] = full_markdown
+                _store.save(file_id, record.get("source_path", ""), document_state, record.get("status", "ready"))
+            else:
+                return jsonify({"error": "Document has no markdown content and no blocks to convert"}), 400
+        
+        block_metadata = document_state.get("structure", {}).get("block_metadata", [])
         
         # Get template info
         template_name = document_state.get("template_name")
         template_content = None
         if template_name:
-            from external.doc_review.template_processor import load_template
-            template_content = load_template(template_name)
+            from core.template_processor import load_template
+            try:
+                template_content = load_template(template_name)
+            except Exception:
+                template_content = None
         
         # Get all suggestions
         template_improvements = document_state.get("template_improvements", [])
@@ -1333,7 +1410,7 @@ def ask_riskgpt():
             selected_blocks = [b for b in block_metadata if b["id"] in selected_block_ids]
         
         # Call RiskGPT Agent
-        from external.products.doc_review.riskgpt.agent import RiskGPTAgent
+        from core.riskgpt_agent import RiskGPTAgent
         agent = RiskGPTAgent()
         result = agent.run(
             file_id=file_id,
@@ -1377,7 +1454,7 @@ def get_templates():
 def get_template_content(template_name: str):
     """Get markdown template content."""
     try:
-        from external.doc_review.template_processor import load_template
+        from core.template_processor import load_template
         content = load_template(template_name)
         return jsonify({
             "template_name": template_name,
@@ -1769,6 +1846,32 @@ def update_prompt(prompt_name: str):
         return jsonify({"error": f"Failed to update prompt: {str(exc)}"}), 500
 
 # ===================================================================
+# LOG FORWARDING ROUTE (for browser console logs)
+# ===================================================================
+
+@doc_review_bp.route("/__logs", methods=["POST"])
+def forward_logs():
+    """Forward browser console logs to server logs."""
+    try:
+        data = request.get_json() or {}
+        level = data.get("level", "info")
+        message = data.get("message", "")
+        timestamp = data.get("timestamp", "")
+        
+        # Log to server console
+        if level == "error":
+            logger.error(f"[Browser] {message}")
+        elif level == "warn":
+            logger.warning(f"[Browser] {message}")
+        else:
+            logger.info(f"[Browser] {message}")
+        
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.error("Error forwarding logs: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+# ===================================================================
 # COMMENT MANAGEMENT ROUTES
 # ===================================================================
 
@@ -1914,6 +2017,48 @@ def get_comment_counts(file_id):
     except Exception as e:
         logger.error("Error getting comment counts: %s", e, exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+# ===================================================================
+# TEXT IMPROVEMENT ROUTE (for Ask AI button)
+# ===================================================================
+
+@doc_review_bp.route("/api/text-improvement/improve", methods=["POST"])
+@_api_key_or_login_required
+def improve_text():
+    """Improve text using LLM."""
+    try:
+        data = request.get_json() or {}
+        text = data.get("text", "").strip()
+        instruction = data.get("instruction", "Improve clarity, grammar, and professionalism while preserving meaning")
+        
+        if not text:
+            return jsonify({"error": "text is required"}), 400
+        
+        if not is_llm_available():
+            return jsonify({"error": "LLM not available"}), 503
+        
+        # Use LLM to improve text
+        client = get_llm_client()
+        prompt = f"""You are a professional text editor. {instruction}
+
+Original text:
+{text}
+
+Provide ONLY the improved version of the text. Do not include any explanations or meta-commentary. Return only the improved text."""
+        
+        improved_text = client.invoke_with_prompt(
+            "You are a professional text editor. Improve the given text while preserving its meaning and intent.",
+            prompt
+        ).strip()
+        
+        return jsonify({
+            "success": True,
+            "original": text,
+            "improved": improved_text
+        }), 200
+    except Exception as e:
+        logger.error("Error improving text: %s", e, exc_info=True)
+        return jsonify({"error": str(e), "success": False}), 500
 
 # ===================================================================
 # AI SUGGESTIONS MANAGEMENT ROUTES

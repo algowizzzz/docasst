@@ -1541,9 +1541,16 @@ class DocReviewAgent:
     def _load_prompt_template(self, prompt_name: str) -> str:
         if prompt_name in self._prompt_cache:
             return self._prompt_cache[prompt_name]
-        prompt_path = Path("external/products/doc_review/prompts") / prompt_name
+        
+        # Try new location first (standalone version)
+        prompt_path = Path("config/prompts") / prompt_name
         if not prompt_path.exists():
-            raise FileNotFoundError(f"Prompt template not found: {prompt_path}")
+            # Fallback to old location (for compatibility)
+            prompt_path = Path("external/products/doc_review/prompts") / prompt_name
+        
+        if not prompt_path.exists():
+            raise FileNotFoundError(f"Prompt template not found: {prompt_name}")
+        
         content = prompt_path.read_text(encoding="utf-8").strip()
         self._prompt_cache[prompt_name] = content
         return content

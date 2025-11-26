@@ -1532,8 +1532,8 @@ const WorkspacePage = {
         const saveButtonText = document.getElementById('saveButtonText');
         if (saveButton) {
             saveButton.disabled = true;
-            saveButton.classList.remove('btn-primary', 'btn-success');
-            saveButton.classList.add('btn-secondary');
+            saveButton.classList.add('saving');
+            saveButton.classList.remove('saved', 'error');
         }
         if (saveButtonText) saveButtonText.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
 
@@ -1547,11 +1547,38 @@ const WorkspacePage = {
                 markdown = this.docStateToMarkdown(this.state.docState);
             }
 
+            // Collect accepted and rejected suggestion IDs
+            const acceptedSuggestions = [];
+            const rejectedSuggestions = [];
+            
+            if (this.state.aiSuggestions && Array.isArray(this.state.aiSuggestions)) {
+                this.state.aiSuggestions.forEach(suggestion => {
+                    if (suggestion.id) {
+                        if (suggestion.status === 'accepted') {
+                            acceptedSuggestions.push(suggestion.id);
+                        } else if (suggestion.status === 'rejected') {
+                            rejectedSuggestions.push(suggestion.id);
+                        }
+                    }
+                });
+            }
+
+            // Get block metadata if available
+            let blockMetadata = null;
+            if (window.docEditor && typeof window.docEditor.getBlockMetadata === 'function') {
+                blockMetadata = window.docEditor.getBlockMetadata();
+            }
+
             const response = await fetch(`/api/doc_review/documents/${encodeURIComponent(this.state.fileId)}/markdown`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ markdown }),
+                body: JSON.stringify({ 
+                    markdown,
+                    block_metadata: blockMetadata,
+                    accepted_suggestions: acceptedSuggestions,
+                    rejected_suggestions: rejectedSuggestions
+                }),
             });
 
             if (!response.ok) {
@@ -1559,15 +1586,14 @@ const WorkspacePage = {
             }
 
             if (saveButton) {
-                saveButton.classList.remove('btn-secondary');
-                saveButton.classList.add('btn-success');
+                saveButton.classList.remove('saving', 'error');
+                saveButton.classList.add('saved');
             }
             if (saveButtonText) saveButtonText.innerHTML = '<i class="bi bi-check-circle"></i> Saved';
 
             setTimeout(() => {
                 if (saveButton) {
-                    saveButton.classList.remove('btn-success');
-                    saveButton.classList.add('btn-primary');
+                    saveButton.classList.remove('saving', 'saved', 'error');
                     saveButton.disabled = false;
                 }
                 if (saveButtonText) saveButtonText.innerHTML = '<i class="bi bi-save"></i> Save';
@@ -1579,15 +1605,14 @@ const WorkspacePage = {
             console.error('[WorkspacePage] Save error:', error);
             alert(`Failed to save document: ${error.message || error}`);
             if (saveButton) {
-                saveButton.classList.remove('btn-secondary');
-                saveButton.classList.add('btn-danger');
+                saveButton.classList.remove('saving', 'saved');
+                saveButton.classList.add('error');
                 saveButton.disabled = false;
             }
             if (saveButtonText) saveButtonText.innerHTML = '<i class="bi bi-x-circle"></i> Error';
             setTimeout(() => {
                 if (saveButton) {
-                    saveButton.classList.remove('btn-danger');
-                    saveButton.classList.add('btn-primary');
+                    saveButton.classList.remove('saving', 'saved', 'error');
                 }
                 if (saveButtonText) saveButtonText.innerHTML = '<i class="bi bi-save"></i> Save';
             }, 3000);
@@ -2107,21 +2132,6 @@ const WorkspacePage = {
                     
                     if (response.ok) {
                         console.log('[WorkspacePage] Updated AI suggestion status to accepted:', suggestionId);
-                        
-                        // Re-apply highlight with 'accepted' status (darker blue)
-                        // Use improved text position (after replacement)
-                        setTimeout(() => {
-                            if (window.docEditor && window.docEditor.applyAISuggestionHighlight && blockId) {
-                                window.docEditor.applyAISuggestionHighlight(
-                                    suggestionId,
-                                    blockId,
-                                    improvedText, // Highlight the improved text now
-                                    'accepted',
-                                    startOffset, // Use original offsets (text length may have changed)
-                                    endOffset
-                                );
-                            }
-                        }, 100);
                     } else {
                         console.error('[WorkspacePage] Failed to update AI suggestion:', await response.text());
                     }
@@ -2148,7 +2158,8 @@ const WorkspacePage = {
                     }
                 }
                 
-                // Reload AI suggestions to refresh highlights
+                // Reload AI suggestions to refresh highlights with updated status
+                // This will re-apply highlights with 'accepted' status (blue highlight)
                 await this.loadAISuggestions();
                 
                 suggestionDiv.remove();
@@ -2364,11 +2375,10 @@ const WorkspacePage = {
     },
 
     applyAISuggestionHighlights() {
-        // Prevent excessive logging - only log once per call
-        if (!this._lastAIHighlightLog || Date.now() - this._lastAIHighlightLog > 2000) {
-            console.log('[WorkspacePage] applyAISuggestionHighlights() called');
-            this._lastAIHighlightLog = Date.now();
-        }
+        console.log('[WorkspacePage] applyAISuggestionHighlights() called');
+        console.log('[WorkspacePage] Editor available:', !!window.docEditor);
+        console.log('[WorkspacePage] Editor methods:', window.docEditor ? Object.keys(window.docEditor) : 'none');
+        console.log('[WorkspacePage] Has applyAISuggestionHighlight:', window.docEditor?.applyAISuggestionHighlight ? 'YES' : 'NO');
         
         if (!window.docEditor || !window.docEditor.applyAISuggestionHighlight) {
             console.warn('[WorkspacePage] Editor not ready for AI suggestion highlights. Available methods:', window.docEditor ? Object.keys(window.docEditor) : 'none');
@@ -2376,19 +2386,23 @@ const WorkspacePage = {
         }
 
         if (!this.state.aiSuggestions || this.state.aiSuggestions.length === 0) {
+            console.log('[WorkspacePage] No AI suggestions to highlight');
             return;
         }
 
-        // Only log if count changed (prevent loop)
-        if (this._lastAICount !== this.state.aiSuggestions.length) {
-            console.log('[WorkspacePage] Applying highlights for', this.state.aiSuggestions.length, 'AI suggestions');
-            this._lastAICount = this.state.aiSuggestions.length;
-        }
+        console.log('[WorkspacePage] Applying highlights for', this.state.aiSuggestions.length, 'AI suggestions');
+        console.log('[WorkspacePage] Suggestions data:', this.state.aiSuggestions.map(s => ({
+            id: s.id,
+            block_id: s.block_id,
+            has_text: !!s.selection_text,
+            status: s.status,
+            has_offsets: !!(s.start_offset !== undefined && s.end_offset !== undefined)
+        })));
         
         this.state.aiSuggestions.forEach(suggestion => {
             if (suggestion.id && suggestion.block_id && suggestion.selection_text) {
                 try {
-                    // Don't log every highlight - too verbose
+                    console.log('[WorkspacePage] Applying highlight for suggestion:', suggestion.id, 'block:', suggestion.block_id, 'status:', suggestion.status);
                     window.docEditor.applyAISuggestionHighlight(
                         suggestion.id,
                         suggestion.block_id,
@@ -2397,6 +2411,7 @@ const WorkspacePage = {
                         suggestion.start_offset,
                         suggestion.end_offset
                     );
+                    console.log('[WorkspacePage] Highlight applied successfully for:', suggestion.id);
                 } catch (error) {
                     console.error('[WorkspacePage] Error applying AI suggestion highlight:', error, suggestion);
                 }

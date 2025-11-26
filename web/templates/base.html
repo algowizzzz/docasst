@@ -19,9 +19,9 @@ Doc Review Assistant - Standalone Version
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg" style="background-color: white !important; border-bottom: 1px solid #e2e8f0 !important;">
         <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('doc_review.documents') }}">
+            <a class="navbar-brand" href="{{ url_for('doc_review.doc_review_documents') }}" style="color: #1a56db !important; font-weight: 600 !important;">
                 <i class="bi bi-file-earmark-text"></i> Doc Review Assistant
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -29,18 +29,12 @@ Doc Review Assistant - Standalone Version
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    {% if session.token %}
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint and 'documents' in request.endpoint %}active{% endif %}" href="{{ url_for('doc_review.documents') }}">
-                            <i class="bi bi-file-earmark-text"></i> Documents
-                        </a>
-                    </li>
-                    {% endif %}
+                    <!-- Documents link removed -->
                 </ul>
                 <ul class="navbar-nav">
                     {% if session.token %}
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown" style="color: #4b5563 !important;">
                             <i class="bi bi-person-circle"></i> {{ session.username or 'User' }}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">

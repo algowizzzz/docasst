@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 
 from core.store import DocReviewStore
+from tools.file_utils import ensure_directory
 
 
 def _timestamp() -> str:
@@ -40,9 +41,14 @@ class CommentsManager:
         record["state"] = state
         record["updated_at"] = _timestamp()
         
-        path = self.store._state_path(file_id)
+        # Use the store's _doc_file method to get the correct path
+        path = self.store._doc_file(file_id)
+        ensure_directory(path.parent)
         with path.open("w", encoding="utf-8") as f:
             json.dump(record, f, indent=2)
+        
+        # Update index
+        self.store._update_index(file_id, record)
         
         return True
     

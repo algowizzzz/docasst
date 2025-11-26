@@ -3,20 +3,19 @@
 {% block title %}Workspace - Doc Review{% endblock %}
 
 {% block extra_css %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/doc_review_workspace.css') }}?v=20250128-3">
-<link rel="stylesheet" href="{{ url_for('static', filename='js/editor.css') }}?v=20250123">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/doc_review_workspace.css') }}?v=20250128-4">
+<link rel="stylesheet" href="{{ url_for('static', filename='editor/editor.css') }}?v=20250123">
 <style>
 /* Override editor's min-h-screen to not cover header */
 .single-doc-editor-content {
     min-height: auto !important;
 }
 
-/* Ensure header is visible and white - override ALL possible yellow/warning styles */
+/* Ensure header is visible and light blue - override ALL possible yellow/warning styles */
 .workspace-header,
-#workspaceHeader,
-.workspace-header * {
-    background: white !important;
-    background-color: white !important;
+#workspaceHeader {
+    background: #e7f3ff !important;
+    background-color: #e7f3ff !important;
 }
 
 .workspace-header {
@@ -29,8 +28,8 @@
 .workspace-header.alert-warning,
 #workspaceHeader.bg-warning,
 #workspaceHeader.alert-warning {
-    background: white !important;
-    background-color: white !important;
+    background: #e7f3ff !important;
+    background-color: #e7f3ff !important;
 }
 
 /* Make editor container scrollable */
@@ -84,7 +83,7 @@ div#analysisContent div#analysisSections.d-none ~ div#analysisEmpty {
     <!-- Center Pane - Editor Island -->
     <main class="workspace-pane workspace-pane-center" id="centerPane" style="background: white !important; outline: none !important; border: none !important;" tabindex="-1">
         <!-- Header Bar - MUST BE FIRST, OUTSIDE EDITOR CONTAINER -->
-        <div class="workspace-header border-bottom px-4 py-3" id="workspaceHeader" style="background-color: white !important; background: white !important; background-image: none !important; border: none !important; outline: none !important;">
+        <div class="workspace-header border-bottom px-4 py-3" id="workspaceHeader" style="background-color: #e7f3ff !important; background: #e7f3ff !important; background-image: none !important; border: none !important; outline: none !important;">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="d-flex align-items-center gap-3">
                     <div>
@@ -94,14 +93,11 @@ div#analysisContent div#analysisSections.d-none ~ div#analysisEmpty {
                     <span class="badge bg-secondary" id="documentStatusBadge">Ready</span>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
-                    <!-- Save Button -->
-                    <button class="btn btn-primary btn-sm" id="saveButton" onclick="WorkspacePage.saveDocument()">
-                        <i class="bi bi-save"></i> <span id="saveButtonText">Save</span>
-                    </button>
+                    <!-- Status badge only - Save button moved to mode switcher row -->
                 </div>
             </div>
             
-            <!-- Mode Switcher -->
+            <!-- Mode Switcher and Save Button Row -->
             <div class="d-flex align-items-center justify-content-between">
                 <div class="btn-group btn-group-sm" role="group">
                     <button type="button" class="btn btn-outline-secondary active" id="modeEditing" onclick="WorkspacePage.setMode('editing')">
@@ -114,6 +110,10 @@ div#analysisContent div#analysisSections.d-none ~ div#analysisEmpty {
                         Diff
                     </button>
                 </div>
+                <!-- Save Button - Moved here for better visibility -->
+                <button class="btn btn-sm" id="saveButton" onclick="WorkspacePage.saveDocument()">
+                    <i class="bi bi-save"></i> <span id="saveButtonText">Save</span>
+                </button>
             </div>
         </div>
         
@@ -157,64 +157,20 @@ div#analysisContent div#analysisSections.d-none ~ div#analysisEmpty {
 
 {% block extra_js %}
         <script>
-        // Force white background on header and remove red borders - run immediately
+        // Remove warning/yellow classes from header (functional, not styling)
         (function() {
-            function forceWhiteHeader() {
+            function removeWarningClasses() {
                 const header = document.getElementById('workspaceHeader');
-                const container = document.getElementById('workspaceContainer');
-                const centerPane = document.getElementById('centerPane');
-                
-                // Remove red borders from all workspace elements
-                [header, container, centerPane].forEach(el => {
-                    if (el) {
-                        // Remove red borders - check both border and borderColor
-                        if (el.style.border && el.style.border.includes('red')) {
-                            el.style.setProperty('border', 'none', 'important');
-                        }
-                        if (el.style.borderColor && (el.style.borderColor.includes('red') || el.style.borderColor === 'red')) {
-                            el.style.setProperty('border-color', 'transparent', 'important');
-                            el.style.setProperty('border', 'none', 'important');
-                        }
-                        // Force remove any red border with !important
-                        el.style.setProperty('border', 'none', 'important');
-                        el.style.setProperty('outline', 'none', 'important');
-                        
-                        // Force white background on header
-                        if (el === header) {
-                            el.style.setProperty('background-color', 'white', 'important');
-                            el.style.setProperty('background', 'white', 'important');
-                            el.classList.remove('bg-warning', 'alert-warning', 'bg-yellow');
-                        }
-                    }
-                });
-                
-                // Check all children for red borders
-                if (container) {
-                    const allElements = container.querySelectorAll('*');
-                    allElements.forEach(child => {
-                        const computedStyle = window.getComputedStyle(child);
-                        if (computedStyle.borderColor && (computedStyle.borderColor.includes('rgb(255') || computedStyle.borderColor === 'red')) {
-                            child.style.border = 'none';
-                            child.style.borderColor = 'transparent';
-                        }
-                        if (child.style && child.style.border && child.style.border.includes('red')) {
-                            child.style.border = 'none';
-                        }
-                    });
+                if (header) {
+                    header.classList.remove('bg-warning', 'alert-warning', 'bg-yellow');
                 }
             }
-            // Run immediately
-            forceWhiteHeader();
-            // Run on DOM ready
+            removeWarningClasses();
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', forceWhiteHeader);
+                document.addEventListener('DOMContentLoaded', removeWarningClasses);
             } else {
-                forceWhiteHeader();
+                removeWarningClasses();
             }
-            // Run after delays to catch any dynamic changes
-            setTimeout(forceWhiteHeader, 100);
-            setTimeout(forceWhiteHeader, 500);
-            setTimeout(forceWhiteHeader, 1000);
         })();
         
         // Debug: Check if editor root exists before scripts load

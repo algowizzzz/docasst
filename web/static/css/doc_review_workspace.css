@@ -88,6 +88,121 @@
     outline: none !important;
 }
 
+/* Workspace Header - Light Blue Background with Better Contrast */
+.workspace-header,
+#workspaceHeader {
+    background-color: #e7f3ff !important;
+    background: #e7f3ff !important;
+    border: none !important;
+    outline: none !important;
+    border-bottom: 1px solid #b3d9ff !important; /* Subtle border for definition */
+}
+
+/* Header Text - Better Contrast */
+.workspace-header h5,
+#workspaceHeader h5,
+#documentTitle {
+    color: #1a56db !important; /* Darker blue for better contrast */
+    font-weight: 600 !important;
+}
+
+.workspace-header small,
+#workspaceHeader small,
+#documentFileId {
+    color: #4b5563 !important; /* Darker gray for readability */
+}
+
+/* Status Badge - Always Visible */
+.workspace-header .badge,
+#workspaceHeader .badge,
+#documentStatusBadge,
+.badge.bg-secondary,
+#documentStatusBadge.bg-secondary,
+.workspace-header .badge.bg-secondary,
+#workspaceHeader .badge.bg-secondary {
+    background-color: #3b82f6 !important; /* Blue badge instead of gray */
+    color: white !important;
+    font-weight: 600 !important;
+    padding: 0.4em 0.75em !important;
+    border-radius: 0.375rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    font-size: 0.75rem !important;
+    box-shadow: 0 1px 3px rgba(59, 130, 246, 0.3) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-block !important;
+}
+
+/* Save Button States - Controlled by CSS classes */
+#saveButton,
+#saveButton *,
+#saveButtonText,
+#saveButton i {
+    background-color: #0d6efd !important;
+    color: white !important;
+    border-color: #0d6efd !important;
+    font-weight: 500 !important;
+    box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2) !important; /* Subtle shadow for depth */
+    transition: all 0.2s ease !important;
+}
+
+#saveButton span,
+#saveButtonText {
+    color: white !important;
+}
+
+#saveButton i.bi-save {
+    color: white !important;
+}
+
+#saveButton:hover {
+    background-color: #0b5ed7 !important;
+    box-shadow: 0 3px 6px rgba(13, 110, 253, 0.3) !important;
+    transform: translateY(-1px) !important;
+}
+
+#saveButton:disabled,
+#saveButton.saving {
+    background-color: #6c757d !important;
+    border-color: #6c757d !important;
+}
+
+#saveButton:disabled *,
+#saveButton.saving *,
+#saveButton:disabled span,
+#saveButton.saving span,
+#saveButton:disabled #saveButtonText,
+#saveButton.saving #saveButtonText,
+#saveButton:disabled i,
+#saveButton.saving i {
+    color: white !important;
+}
+
+#saveButton.saved {
+    background-color: #198754 !important;
+    border-color: #198754 !important;
+}
+
+#saveButton.saved *,
+#saveButton.saved span,
+#saveButton.saved #saveButtonText,
+#saveButton.saved i {
+    color: white !important;
+}
+
+#saveButton.error {
+    background-color: #dc3545 !important;
+    border-color: #dc3545 !important;
+}
+
+#saveButton.error *,
+#saveButton.error span,
+#saveButton.error #saveButtonText,
+#saveButton.error i {
+    color: white !important;
+}
+
 /* Remove any debug borders, red styling, and focus outlines - AGGRESSIVE */
 .workspace-container,
 #workspaceContainer,
@@ -364,14 +479,21 @@ main.workspace-pane-center:focus-visible {
     transform: none;
 }
 
-/* Force white background, override any yellow/warning classes */
+/* Force light blue background, override any yellow/warning classes */
 #workspaceHeader,
-#workspaceHeader *,
-.workspace-header,
-.workspace-header * {
-    background: var(--white) !important;
-    background-color: var(--white) !important;
+.workspace-header {
+    background: #e7f3ff !important;
+    background-color: #e7f3ff !important;
     background-image: none !important;
+}
+
+/* But allow buttons and badges to have their own backgrounds - don't force white */
+#workspaceHeader .btn:not(.btn-outline-secondary),
+.workspace-header .btn:not(.btn-outline-secondary),
+#workspaceHeader .badge,
+.workspace-header .badge {
+    background: inherit !important;
+    background-color: inherit !important;
 }
 
 /* Remove Bootstrap warning classes */
@@ -379,8 +501,8 @@ main.workspace-pane-center:focus-visible {
 #workspaceHeader.alert-warning,
 .workspace-header.bg-warning,
 .workspace-header.alert-warning {
-    background: var(--white) !important;
-    background-color: var(--white) !important;
+    background: #e7f3ff !important;
+    background-color: #e7f3ff !important;
 }
 
 /* ============================================
@@ -401,13 +523,30 @@ main.workspace-pane-center:focus-visible {
     transition: all var(--transition-base) !important;
 }
 
-.workspace-header .btn-group .btn:hover {
-    background-color: var(--gray-50) !important;
-    border-color: var(--gray-400) !important;
-    color: var(--text-primary) !important;
+.workspace-header .btn-group .btn:hover,
+#workspaceHeader .btn-group .btn:hover,
+.workspace-header .btn-group .btn-outline-secondary:hover,
+#workspaceHeader .btn-group .btn-outline-secondary:hover {
+    background-color: #f1f5f9 !important;
+    border-color: #94a3b8 !important;
+    color: #1e293b !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+    transform: translateY(-1px) !important;
 }
 
-.workspace-header .btn-group .btn.active {
+.workspace-header .btn-group .btn.active,
+.workspace-header .btn-group .btn-outline-secondary.active,
+#workspaceHeader .btn-group .btn.active,
+#workspaceHeader .btn-group .btn-outline-secondary.active,
+#modeEditing.active,
+#modeOriginal.active,
+#modeDiff.active {
+    background-color: #3b82f6 !important;
+    color: white !important;
+    border-color: #3b82f6 !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3) !important;
+}
     background-color: #0d6efd !important; /* Explicit primary color */
     border-color: #0d6efd !important;
     color: #ffffff !important; /* Explicit white text */
@@ -415,9 +554,13 @@ main.workspace-pane-center:focus-visible {
     font-weight: 500;
 }
 
-.workspace-header .btn-group .btn.active:hover {
-    background-color: var(--primary-hover) !important;
-    border-color: var(--primary-hover) !important;
+.workspace-header .btn-group .btn.active:hover,
+#workspaceHeader .btn-group .btn.active:hover,
+.workspace-header .btn-group .btn-outline-secondary.active:hover,
+#workspaceHeader .btn-group .btn-outline-secondary.active:hover {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    box-shadow: 0 3px 6px rgba(59, 130, 246, 0.4) !important;
 }
 
 .workspace-editor-container {

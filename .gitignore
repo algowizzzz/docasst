@@ -42,6 +42,11 @@ editor/build/
 config/config.yaml
 !config/config.example.yaml
 
+# Environment variables (never commit)
+.env
+.env.local
+.env.*.local
+
 # Test
 .pytest_cache/
 .coverage

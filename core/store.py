@@ -176,6 +176,7 @@ class DocReviewStore:
         self,
         file_id: str,
         markdown: str,
+        toc_markdown: Optional[str] = None,
         block_metadata: Optional[List[Dict[str, Any]]] = None,
         accepted_suggestions: Optional[List[str]] = None,
         rejected_suggestions: Optional[List[str]] = None,
@@ -188,10 +189,19 @@ class DocReviewStore:
         state = doc.get("state", {})
         state["raw_markdown"] = markdown
         
+        if toc_markdown:
+            state["toc_markdown"] = toc_markdown
+        
         if block_metadata:
             structure = state.get("structure", {})
             structure["block_metadata"] = block_metadata
             state["structure"] = structure
+        
+        if accepted_suggestions is not None:
+            state["accepted_suggestions"] = accepted_suggestions
+        
+        if rejected_suggestions is not None:
+            state["rejected_suggestions"] = rejected_suggestions
         
         doc["state"] = state
         doc["updated_at"] = _timestamp()
