@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Prompts - Doc Review{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/doc_review_prompts.css') }}?v=20250123">
+{% endblock %}
+
+{% block content %}
+<div class="prompts-page">
+    <div class="row">
+        <!-- Left Sidebar - Prompt List -->
+        <div class="col-md-3 border-end">
+            <div class="p-3">
+                <h5 class="mb-3">Prompts</h5>
+                <div class="list-group" id="promptsList">
+                    <!-- Prompts will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Side - Prompt Editor -->
+        <div class="col-md-9">
+            <div class="p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <h5 id="promptTitle" class="mb-1">Select a prompt</h5>
+                        <small class="text-muted" id="promptDescription"></small>
+                    </div>
+                    <div>
+                        <button id="btnSavePrompt" class="btn btn-primary" onclick="PromptsPage.savePrompt()" disabled>
+                            <i class="bi bi-save"></i> Save
+                        </button>
+                    </div>
+                </div>
+
+                <div id="promptEditorContainer">
+                    <textarea 
+                        id="promptEditor" 
+                        class="form-control font-monospace" 
+                        rows="20"
+                        style="font-size: 0.875rem;"
+                        oninput="PromptsPage.handleContentChange()"
+                    ></textarea>
+                </div>
+
+                <div id="saveStatus" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/doc_review_prompts.js') }}?v=20250123"></script>
+{% endblock %}
+

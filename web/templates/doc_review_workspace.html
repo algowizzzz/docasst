@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Workspace - Doc Review{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/doc_review_workspace.css') }}?v=20250128-4">
+<link rel="stylesheet" href="{{ url_for('static', filename='editor/editor.css') }}?v=20250123">
+<style>
+/* Override editor's min-h-screen to not cover header */
+.single-doc-editor-content {
+    min-height: auto !important;
+}
+
+/* Ensure header is visible and light blue - override ALL possible yellow/warning styles */
+.workspace-header,
+#workspaceHeader {
+    background: #e7f3ff !important;
+    background-color: #e7f3ff !important;
+}
+
+.workspace-header {
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* Remove any Bootstrap warning/yellow classes */
+.workspace-header.bg-warning,
+.workspace-header.alert-warning,
+#workspaceHeader.bg-warning,
+#workspaceHeader.alert-warning {
+    background: #e7f3ff !important;
+    background-color: #e7f3ff !important;
+}
+
+/* Make editor container scrollable */
+.workspace-editor-container {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+/* CRITICAL: Force hide empty state by default - inline override */
+div#analysisContent div#analysisEmpty {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: absolute !important;
+    pointer-events: none !important;
+}
+
+/* Show empty state ONLY when sections are hidden */
+div#analysisContent div#analysisSections.d-none ~ div#analysisEmpty {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 1.25rem 0 !important;
+    position: static !important;
+    pointer-events: auto !important;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="workspace-container" id="workspaceContainer">
+    <!-- Left Pane - Removed (content moved to Analysis tab in right pane) -->
+
+    <!-- Resize Handle Left -->
+    <div class="resize-handle resize-handle-left" id="resizeHandleLeft" style="display: none;"></div>
+    
+    <!-- Left Pane Toggle Button -->
+    <button class="btn btn-sm btn-outline-secondary position-fixed" id="leftPaneToggleBtn" 
+            style="left: 10px; top: 50%; transform: translateY(-50%); z-index: 1000; display: none;"
+            onclick="WorkspacePage.toggleLeftPane()"
+            title="Toggle left pane">
+        <i class="bi bi-chevron-right" id="leftPaneToggleIcon"></i>
+    </button>
+
+    <!-- Center Pane - Editor Island -->
+    <main class="workspace-pane workspace-pane-center" id="centerPane" style="background: white !important; outline: none !important; border: none !important;" tabindex="-1">
+        <!-- Header Bar - MUST BE FIRST, OUTSIDE EDITOR CONTAINER -->
+        <div class="workspace-header border-bottom px-4 py-3" id="workspaceHeader" style="background-color: #e7f3ff !important; background: #e7f3ff !important; background-image: none !important; border: none !important; outline: none !important;">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="d-flex align-items-center gap-3">
+                    <div>
+                        <h5 class="mb-1" id="documentTitle">{{ file_id or 'No Document' }}</h5>
+                        <small class="text-muted" id="documentFileId">{{ file_id or '' }}</small>
+                    </div>
+                    <span class="badge bg-secondary" id="documentStatusBadge">Ready</span>
+                </div>
+                <div class="d-flex gap-2 align-items-center">
+                    <!-- Status badge only - Save button moved to mode switcher row -->
+                </div>
+            </div>
+            
+            <!-- Mode Switcher and Save Button Row -->
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" id="modeEditing" onclick="WorkspacePage.setMode('editing')">
+                        Editing
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="modeOriginal" onclick="WorkspacePage.setMode('original')">
+                        Original
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="modeDiff" onclick="WorkspacePage.setMode('diff')">
+                        Diff
+                    </button>
+                </div>
+                <!-- Save Button - Moved here for better visibility -->
+                <button class="btn btn-sm" id="saveButton" onclick="WorkspacePage.saveDocument()">
+                    <i class="bi bi-save"></i> <span id="saveButtonText">Save</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Editor Container - MUST BE AFTER HEADER -->
+        <div class="workspace-editor-container" id="editorContainer">
+            <div id="editor-root" 
+                 data-doc-state="{{ doc_state_json | e }}"
+                 data-file-id="{{ file_id or '' }}"
+                 data-read-only="false"
+                 data-auto-save="true">
+                <!-- Editor will mount here -->
+                <div style="padding: 20px; text-align: center; color: #666;">
+                    Loading editor...
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Resize Handle Right -->
+    <div class="resize-handle resize-handle-right" id="resizeHandleRight"></div>
+
+    <!-- Right Pane -->
+    <aside class="workspace-pane workspace-pane-right" id="rightPane">
+        {% include '_doc_review_right_pane.html' %}
+    </aside>
+</div>
+
+<!-- Collapse Toggles -->
+<div class="pane-collapse-toggle pane-collapse-left d-none" id="leftPaneToggle">
+    <button class="btn btn-sm btn-link" onclick="WorkspacePage.toggleLeftPane()">
+        <i class="bi bi-chevron-right"></i>
+    </button>
+</div>
+
+<div class="pane-collapse-toggle pane-collapse-right d-none" id="rightPaneToggle">
+    <button class="btn btn-sm btn-link" onclick="WorkspacePage.toggleRightPane()">
+        <i class="bi bi-chevron-left"></i>
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+        <script>
+        // Remove warning/yellow classes from header (functional, not styling)
+        (function() {
+            function removeWarningClasses() {
+                const header = document.getElementById('workspaceHeader');
+                if (header) {
+                    header.classList.remove('bg-warning', 'alert-warning', 'bg-yellow');
+                }
+            }
+            removeWarningClasses();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', removeWarningClasses);
+            } else {
+                removeWarningClasses();
+            }
+        })();
+        
+        // Debug: Check if editor root exists before scripts load
+        console.log('[Template] DOM ready state:', document.readyState);
+const editorRootBefore = document.getElementById('editor-root');
+console.log('[Template] Editor root exists before bundle:', !!editorRootBefore);
+if (editorRootBefore) {
+    console.log('[Template] Editor root data-doc-state length:', editorRootBefore.dataset.docState ? editorRootBefore.dataset.docState.length : 0);
+}
+
+// Debug: Check if header exists in DOM
+const headerCheck = document.getElementById('workspaceHeader');
+console.log('[Template] Header exists before scripts:', !!headerCheck);
+if (headerCheck) {
+    console.log('[Template] Header innerHTML length:', headerCheck.innerHTML.length);
+    console.log('[Template] Header computed display:', window.getComputedStyle(headerCheck).display);
+} else {
+    console.error('[Template] ERROR: Header NOT found in DOM before scripts load!');
+    const centerPane = document.getElementById('centerPane');
+    if (centerPane) {
+        console.error('[Template] centerPane innerHTML length:', centerPane.innerHTML.length);
+        console.error('[Template] centerPane children count:', centerPane.children.length);
+        console.error('[Template] centerPane children:', Array.from(centerPane.children).map(c => ({
+            tagName: c.tagName,
+            id: c.id,
+            className: c.className,
+        })));
+        console.error('[Template] centerPane innerHTML preview (first 1000 chars):', centerPane.innerHTML.substring(0, 1000));
+        console.error('[Template] centerPane outerHTML preview (first 1000 chars):', centerPane.outerHTML.substring(0, 1000));
+    }
+}
+</script>
+<script src="{{ url_for('static', filename='js/editor.iife.js') }}?v=20250128" onload="console.log('[Template] ✅ Editor bundle script loaded'); console.log('[Template] window.docEditor exists:', typeof window.docEditor !== 'undefined'); if (window.docEditor) { console.log('[Template] ✅ window.docEditor methods:', Object.keys(window.docEditor)); console.log('[Template] ✅ applyCommentHighlight exists?', typeof window.docEditor.applyCommentHighlight); console.log('[Template] ✅ applyAISuggestionHighlight exists?', typeof window.docEditor.applyAISuggestionHighlight); } else { console.error('[Template] ❌ window.docEditor is undefined!'); }" onerror="console.error('[Template] ❌ Editor bundle script failed to load')"></script>
+<script>
+// Debug: Check after editor bundle loads
+console.log('[Template] Editor bundle loaded, checking for editor root...');
+const editorRootCheck = document.getElementById('editor-root');
+if (editorRootCheck) {
+    console.log('[Template] Editor root found after bundle load');
+    console.log('[Template] data-doc-state length:', editorRootCheck.dataset.docState ? editorRootCheck.dataset.docState.length : 0);
+    console.log('[Template] data-doc-state preview:', editorRootCheck.dataset.docState ? editorRootCheck.dataset.docState.substring(0, 200) : 'empty');
+    console.log('[Template] data-file-id:', editorRootCheck.dataset.fileId);
+    console.log('[Template] data-read-only:', editorRootCheck.dataset.readOnly);
+    
+    // Try to manually trigger editor mount if it hasn't mounted
+    // The editor bundle should auto-mount, but let's check if we can help
+    if (typeof window.docEditor === 'undefined') {
+        console.warn('[Template] window.docEditor not found - editor may not have mounted yet');
+        
+        // Wait a bit longer and check again
+        setTimeout(() => {
+            const editorContent = editorRootCheck.querySelector('[data-lexical-editor="true"]');
+            if (editorContent) {
+                console.log('[Template] ✅ Editor mounted successfully!');
+            } else {
+                console.error('[Template] ❌ Editor still not mounted after 2 seconds');
+                console.error('[Template] Editor root innerHTML:', editorRootCheck.innerHTML.substring(0, 200));
+                console.error('[Template] Checking for JavaScript errors...');
+                
+                // Check if there are any React errors
+                const reactRoot = editorRootCheck._reactRootContainer || editorRootCheck._reactInternalInstance;
+                if (reactRoot) {
+                    console.log('[Template] React root found:', reactRoot);
+                } else {
+                    console.error('[Template] No React root found - editor bundle may not have executed');
+                }
+            }
+        }, 2000);
+    } else {
+        console.log('[Template] ✅ window.docEditor found - editor is mounted!');
+    }
+} else {
+    console.error('[Template] Editor root NOT found after bundle load!');
+}
+</script>
+<script>
+// Browser log forwarding for workspace page
+(function() {
+    const originalLog = console.log;
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    function sendToServer(level, args) {
+        try {
+            const logString = args.map(arg => {
+                if (typeof arg === 'string') return arg;
+                if (typeof arg === 'object') {
+                    try {
+                        return JSON.stringify(arg);
+                    } catch {
+                        return '[Object]';
+                    }
+                }
+                return String(arg);
+            }).join(' ');
+            
+            // Filter: only send logs with our markers or errors/warnings
+            const shouldSend = 
+                level === 'error' || 
+                level === 'warn' ||
+                logString.includes('[Template]') ||
+                logString.includes('[WorkspacePage]') ||
+                logString.includes('[Editor]') ||
+                logString.includes('✅') ||
+                logString.includes('❌') ||
+                logString.includes('ERROR') ||
+                logString.includes('WARN');
+            
+            if (!shouldSend) return;
+            
+            fetch('/__logs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    level,
+                    args: args.map(arg => {
+                        if (typeof arg === 'object' && arg !== null) {
+                            try {
+                                return JSON.parse(JSON.stringify(arg, (key, value) => {
+                                    if (typeof value === 'function') return '[Function]';
+                                    if (value instanceof Error) return value.toString();
+                                    return value;
+                                }));
+                            } catch {
+                                return String(arg);
+                            }
+                        }
+                        return arg;
+                    }),
+                    url: window.location.href,
+                    timestamp: new Date().toISOString(),
+                }),
+            }).catch(() => {
+                // Silently fail
+            });
+        } catch (err) {
+            // Silently fail
+        }
+    }
+
+    console.log = function(...args) {
+        originalLog.apply(console, args);
+        sendToServer('log', args);
+    };
+
+    console.warn = function(...args) {
+        originalWarn.apply(console, args);
+        sendToServer('warn', args);
+    };
+
+    console.error = function(...args) {
+        originalError.apply(console, args);
+        sendToServer('error', args);
+    };
+})();
+</script>
+<script src="{{ url_for('static', filename='js/doc_review_workspace.js') }}?v=20250128-3"></script>
+<script>
+// Initialize workspace with data from Flask
+// Note: Editor bundle (editor.iife.js) auto-mounts when it finds #editor-root
+(function() {
+    function initWorkspace() {
+        try {
+            // DEBUG: Check if header exists
+            const header = document.querySelector('.workspace-header');
+            const centerPane = document.getElementById('centerPane');
+            console.log('[DEBUG] Header element exists:', !!header);
+            console.log('[DEBUG] Center pane exists:', !!centerPane);
+            if (header) {
+                console.log('[DEBUG] Header computed style display:', window.getComputedStyle(header).display);
+                console.log('[DEBUG] Header computed style visibility:', window.getComputedStyle(header).visibility);
+                console.log('[DEBUG] Header computed style opacity:', window.getComputedStyle(header).opacity);
+                console.log('[DEBUG] Header offsetHeight:', header.offsetHeight);
+                console.log('[DEBUG] Header offsetTop:', header.offsetTop);
+                console.log('[DEBUG] Header innerHTML length:', header.innerHTML.length);
+            } else {
+                console.error('[DEBUG] Header element NOT FOUND in DOM!');
+                // Try to find it by class
+                const allHeaders = document.querySelectorAll('[class*="header"]');
+                console.log('[DEBUG] All elements with "header" in class:', allHeaders.length);
+            }
+            
+            // Check if editor root exists
+            const editorRoot = document.getElementById('editor-root');
+            if (editorRoot) {
+                console.log('[WorkspacePage] Editor root found, fileId:', editorRoot.dataset.fileId);
+                console.log('[WorkspacePage] data-doc-state present:', !!editorRoot.dataset.docState);
+                console.log('[WorkspacePage] data-doc-state preview:', editorRoot.dataset.docState ? editorRoot.dataset.docState.substring(0, 100) : 'empty');
+            } else {
+                console.error('[WorkspacePage] Editor root (#editor-root) not found!');
+            }
+            
+            // Parse docState for workspace page
+            let docState = null;
+            try {
+                const docStateStr = '{{ doc_state_json | e }}';
+                if (docStateStr && docStateStr !== '{}') {
+                    docState = JSON.parse(docStateStr);
+                    console.log('[WorkspacePage] Parsed docState with', docState.blocks ? docState.blocks.length : 0, 'blocks');
+                }
+            } catch (e) {
+                console.warn('[WorkspacePage] Could not parse docState:', e);
+            }
+            
+            // Initialize workspace page
+            if (typeof WorkspacePage !== 'undefined') {
+                WorkspacePage.init({
+                    fileId: '{{ file_id or "" }}',
+                    docState: docState,
+                });
+            } else {
+                console.error('[WorkspacePage] WorkspacePage not defined!');
+            }
+        } catch (error) {
+            console.error('[WorkspacePage] Initialization error:', error);
+        }
+    }
+    
+    // Run immediately if DOM is ready, otherwise wait
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initWorkspace);
+    } else {
+        // DOM already loaded, run immediately
+        initWorkspace();
+    }
+})();
+</script>
+{% endblock %}
+

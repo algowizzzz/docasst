@@ -1,0 +1,45 @@
+<!-- Left Pane - Document Analysis -->
+<div class="left-pane-content h-100 d-flex flex-column">
+    <!-- Header -->
+    <div class="p-3 border-bottom bg-white">
+        <div class="d-flex justify-content-between align-items-start">
+            <div class="flex-grow-1">
+                <h6 class="mb-1 fw-semibold">Document Analysis</h6>
+                <small class="text-muted">Review AI-generated insights and suggestions</small>
+            </div>
+            <button 
+                id="btnAnalyzeDocument" 
+                class="btn btn-primary btn-sm"
+                onclick="WorkspacePage.analyzeDocument()"
+            >
+                <i class="bi bi-play-fill"></i> Analyze
+            </button>
+        </div>
+        <div id="analysisStatus" class="mt-2 d-none">
+            <span class="badge bg-success" id="analysisStatusBadge">0 sections analyzed</span>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div class="flex-grow-1 overflow-auto p-3" id="leftPaneContent">
+        <!-- AI Edits Section -->
+        <div id="aiEditsSection" class="card mb-3 d-none">
+            <div class="card-header bg-primary bg-opacity-10">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-sparkles text-primary"></i>
+                    <h6 class="mb-0">AI Edits</h6>
+                    <span class="badge bg-primary" id="aiEditsCount">0</span>
+                </div>
+            </div>
+            <div class="card-body" id="aiEditsList">
+                <!-- AI edits will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Analysis Sections -->
+        <div id="analysisSections">
+            <!-- Analysis sections will be rendered here -->
+        </div>
+    </div>
+</div>
+
