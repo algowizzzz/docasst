@@ -3,7 +3,7 @@
 ## 1. Executive Summary
 
 ### Product Vision
-Doc Review Assistant is an AI-powered document review platform designed to streamline policy and compliance document creation, review, and improvement processes at BMO. By leveraging Claude AI's advanced language capabilities, the tool reduces manual review time by up to 70% while improving document quality and consistency.
+Doc Review Assistant is an AI-powered document review platform designed to streamline document review, and improvement processes at BMO. By leveraging Claude AI's advanced language capabilities, the tool aims to reduces manual review time while improving document quality and consistency.
 
 ### Value Proposition
 - **Accelerate Review Cycles**: Automated analysis reduces weeks of manual review to hours
@@ -11,17 +11,7 @@ Doc Review Assistant is an AI-powered document review platform designed to strea
 - **Enable Collaboration**: Real-time commenting and highlighting facilitate team coordination
 - **Ensure Consistency**: Template-based checks enforce organizational standards
 
-### Target Users at BMO
-- **Compliance Officers**: Review and validate policy documents against regulatory requirements
-- **Policy Writers**: Draft and refine internal policies and procedures
-- **Risk Management Teams**: Assess risk-related documentation for completeness
-- **Legal Teams**: Review contracts, policies, and regulatory submissions
 
-### Business Impact Metrics
-- **Time Savings**: 70% reduction in document review time
-- **Quality Improvement**: 40% fewer revision cycles
-- **Consistency**: 100% template compliance checking
-- **Cost Efficiency**: Reduced external consultant dependency
 
 ---
 
@@ -29,7 +19,7 @@ Doc Review Assistant is an AI-powered document review platform designed to strea
 
 ### What is Doc Review Assistant?
 
-Doc Review Assistant is an enterprise-grade document review platform that combines AI-powered analysis with collaborative editing tools. Built specifically for BMO's compliance, risk, and legal teams, it transforms PDF documents into structured, reviewable content and provides intelligent suggestions for improvement.
+Doc Review Assistant is an enterprise-grade document review platform that combines AI-powered analysis with collaborative editing tools. Built specifically for BMO's compliance, finance,risk, and legal teams, it transforms PDF documents into structured, reviewable content and provides intelligent suggestions for improvement.
 
 ### Problem Statement
 
@@ -65,7 +55,7 @@ Doc Review Assistant addresses these challenges through:
 
 ### Primary User Personas
 
-#### 1. **Sarah - Compliance Officer**
+#### 1. **Sarah - Compliance Officer** TBD 
 **Role**: Ensures policies meet regulatory requirements  
 **Goals**: Validate documents against OSFI guidelines, identify gaps, track remediation  
 **Pain Points**: Manual gap analysis takes days, tracking changes across versions is difficult  
@@ -149,13 +139,6 @@ Doc Review Assistant addresses these challenges through:
 ### 4.1 PDF Ingestion & Processing
 
 **Capability**: Convert any PDF policy document into structured, editable blocks
-
-**How It Works**:
-- Uploads PDF to secure storage
-- Converts each page to high-resolution image (300 DPI)
-- Sends images to Claude Vision API for OCR and structure detection
-- Extracts text, headings, lists, tables into JSON blocks
-- Generates stable block IDs for tracking
 
 **Key Benefits**:
 - Preserves document structure (headings, lists, tables)
@@ -705,117 +688,27 @@ Doc Review Assistant addresses these challenges through:
 
 ### Long-Term Vision (2025-2026)
 
-**Phase 1: Intelligence Layer**
-- Advanced ML models trained on BMO policies
-- Predictive gap analysis
-- Automated policy generation from templates
-- Natural language policy search
-- Intelligent document routing
-
-**Phase 2: Ecosystem Integration**
-- Integration with BMO document management systems
-- Confluence/SharePoint connectors
-- ServiceNow integration for issue tracking
-- Jira integration for workflow management
-- Microsoft Teams notifications
-
-**Phase 3: Advanced AI Capabilities**
-- Multi-document synthesis
-- Policy impact analysis (what changes if we update X?)
-- Regulatory change monitoring and alerts
-- Automated compliance mapping
-- AI-powered policy recommendations
-
-**Phase 4: Scale & Performance**
+**Phase: Scale & Performance**
 - Support for 1000+ page documents
 - Real-time collaborative editing (Google Docs-style)
 - Mobile app for review on-the-go
 - Offline mode with sync
 - Multi-language support
 
-**Phase 5: Governance & Control**
+
+**Phase: Governance & Control**
 - Advanced audit trails
 - Compliance reporting dashboard
 - Policy lifecycle management
 - Automated archival and retention
 - E-signature integration
 
----
-
-## 7. Technical Requirements
-
-### System Requirements
-
-**Server Requirements** (for deployment):
-- **OS**: Linux (Ubuntu 20.04+), macOS, Windows Server
-- **CPU**: 4+ cores recommended
-- **RAM**: 16GB minimum, 32GB recommended
-- **Storage**: 100GB+ SSD (depends on document volume)
-- **Python**: 3.10 or higher
-- **Node.js**: 18+ (for building frontend)
-
-**Client Requirements** (for users):
-- **Browser**: 
-  - Chrome 90+ (recommended)
-  - Firefox 88+
-  - Safari 14+
-  - Edge 90+
-- **Screen Resolution**: 1920x1080 minimum
-- **Internet**: Stable connection (5 Mbps+)
-- **RAM**: 8GB+ for large documents
-
-### Browser Compatibility
-
-| Feature | Chrome | Firefox | Safari | Edge |
-|---------|--------|---------|--------|------|
-| Document Upload | ✅ | ✅ | ✅ | ✅ |
-| Rich Text Editing | ✅ | ✅ | ✅ | ✅ |
-| Comments | ✅ | ✅ | ✅ | ✅ |
-| Real-time Sync | ✅ | ✅ | ⚠️ | ✅ |
-| Drag & Drop | ✅ | ✅ | ✅ | ✅ |
-| Export | ✅ | ✅ | ✅ | ✅ |
-
-⚠️ = Supported with minor limitations
-
-### API Dependencies
-
-**Anthropic Claude API**:
-- **Required**: Yes (core functionality)
-- **Models Used**: 
-  - `claude-3-haiku-20240307` (analysis, suggestions)
-  - `claude-3-opus-20240229` (complex analysis)
-- **API Key**: Required (set via `ANTHROPIC_API_KEY` env var)
-- **Rate Limits**: 
-  - 50 requests/minute (Haiku)
-  - 20 requests/minute (Opus)
-- **Cost**: ~$0.25 per document analysis (varies by size)
-
-**External Dependencies**:
-- **poppler-utils**: PDF rendering (install via package manager)
-- **Socket.IO**: Real-time updates (included in Python packages)
-
-### Performance Benchmarks
-
-**Document Processing** (Claude Vision mode):
-- **Small** (1-10 pages): 30-60 seconds
-- **Medium** (11-50 pages): 2-5 minutes
-- **Large** (51-100 pages): 5-10 minutes
-- **Very Large** (100+ pages): 10+ minutes
-
-**Analysis Performance**:
-- **Phase 1** (TOC Review): 20-30 seconds
-- **Phase 2** (Holistic Checks): 2-3 minutes
-- **Template Compliance**: 1-2 minutes
-- **AI Suggestions** (per block): 3-5 seconds
-
-**Concurrent Users**:
-- **Current**: 5-10 users (POC)
-- **Target**: 50+ users (production)
-
-**Storage Requirements**:
-- **Per Document**: 2-5 MB (JSON + metadata)
-- **Per PDF**: Original size (stored separately)
-- **100 Documents**: ~500 MB - 1 GB
+**Phase: Advanced AI Capabilities**
+- Multi-document synthesis
+- Policy impact analysis (what changes if we update X?)
+- Regulatory change monitoring and alerts
+- Automated compliance mapping
+- AI-powered policy recommendations
 
 ---
 
@@ -849,6 +742,9 @@ Doc Review Assistant addresses these challenges through:
 - Limited concurrent user support
 - Comments don't support file attachments
 - Export limited to Markdown format
+- Ask AI color not visible and not saved 
+- Horizontal toolbar buttons 
+- Update prompt workflow 
 
 **Limitations**:
 - File-based storage (no database)
