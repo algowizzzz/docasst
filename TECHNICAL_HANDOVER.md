@@ -2,9 +2,11 @@
 
 ## Architecture Overview
 
-**Stack**: Flask (Python) + React/Lexical (TypeScript) + Anthropic Claude API + Socket.IO
+**Stack**: Flask (Python) + React/Lexical (TypeScript, compiled to static bundle) + Anthropic Claude API + Socket.IO
 
 **Pattern**: State-driven orchestration with file-based JSON storage. The system processes PDFs through a multi-phase pipeline, stores state in JSON files, and provides real-time collaboration via WebSockets.
+
+**Frontend Architecture**: React app in `editor/` is built into a standalone IIFE bundle (`editor.iife.js`) that Flask serves as static files. No separate frontend server - React is compiled and embedded in Flask templates.
 
 ## Core Components
 
@@ -39,10 +41,12 @@ Wrapper around Anthropic SDK:
 
 ### 5. **Frontend Editor** (`editor/src/`)
 React + Lexical-based rich text editor:
-- `SingleDocumentEditor.tsx`: Main editor component
-- Block-based editing with comments, AI suggestions, highlights
-- Real-time sync via Socket.IO
-- Auto-saves to `/api/doc_review/documents/{file_id}/markdown` (PUT)
+- **Build Process**: Vite compiles React/TypeScript → `web/static/js/editor.iife.js` (standalone bundle)
+- **Entry Point**: `editor/src/editor-standalone.tsx` → mounts to `#editor-root` in Flask templates
+- **Main Components**: `App.tsx` (routing), `SingleDocumentEditor.tsx` (Lexical editor), `CenterPane.tsx` (workspace)
+- **Features**: Block-based editing, comments, AI suggestions, highlights, real-time sync via Socket.IO
+- **Auto-save**: PUT to `/api/doc_review/documents/{file_id}/markdown`
+- **No Dev Server**: React is pre-compiled; Flask serves static bundle
 
 ## Data Flow
 
