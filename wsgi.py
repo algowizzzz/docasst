@@ -1,10 +1,9 @@
-"""WSGI entry point for Railway deployment."""
-import os
+"""WSGI entry point for Railway deployment with gunicorn."""
 from app.server import create_app
 
+# Create app and socketio
 app, socketio = create_app()
 
-if __name__ == "__main__":
-    port = int(os.getenv('PORT', 8000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=False, allow_unsafe_werkzeug=True)
+# For gunicorn, we need to expose the app
+# Socket.IO will work with eventlet worker class
 
