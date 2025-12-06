@@ -1,0 +1,14 @@
+venv/
+__pycache__/
+*.pyc
+data/
+*.log
+.env
+.env.local
+.git/
+node_modules/
+CAR_Chapter_1_First_5_Pages.pdf
+car24_chpt1_0.pdf
+*.md
+!README.md
+
