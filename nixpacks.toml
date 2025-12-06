@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["python311", "nodejs-18_x", "poppler_utils"]
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "cd editor && npm install && npm run build:editor && cd .."
+]
+
+[start]
+cmd = "python app/server.py"
+
