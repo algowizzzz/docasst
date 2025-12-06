@@ -14,6 +14,7 @@ import { $createDocQuoteNode } from '../nodes/DocQuoteNode';
 import { $createDocDividerNode } from '../nodes/DocDividerNode';
 import { $createDocImageNode } from '../nodes/DocImageNode';
 import { $createDocEmptyNode } from '../nodes/DocEmptyNode';
+import { $createDocTableNode } from '../nodes/DocTableNode';
 
 interface DocInitializerPluginProps {
   initialDoc: DocState;
@@ -41,11 +42,42 @@ export function DocInitializerPlugin({ initialDoc }: DocInitializerPluginProps) 
       let nodesCreated = 0;
       const blockIdsInEditor: string[] = [];
       
-      for (const block of initialDoc.blocks) {
+      for (let i = 0; i < initialDoc.blocks.length; i++) {
+        const block = initialDoc.blocks[i];
+        const metadata = (block as any).metadata;
+        const isFootnote = metadata?.is_footnote;
+        
+        // Add divider before footnote if previous block was not a footnote
+        if (isFootnote && i > 0) {
+          const prevBlock = initialDoc.blocks[i - 1];
+          const prevMetadata = (prevBlock as any).metadata;
+          const prevIsFootnote = prevMetadata?.is_footnote;
+          
+          if (!prevIsFootnote) {
+            // Insert divider before first footnote
+            const dividerNode = $createDocDividerNode(`${block.id}_divider`);
+            root.append(dividerNode);
+            nodesCreated++;
+          }
+        }
+        
         const node = createNodeFromBlock(block);
         if (node) {
           root.append(node);
           nodesCreated++;
+          
+          // Add footnote class if this is a footnote paragraph
+          const metadata = (block as any).metadata;
+          const isFootnote = metadata?.is_footnote;
+          if (isFootnote && node.getType() === 'doc-paragraph') {
+            // Add class after DOM is created
+            setTimeout(() => {
+              const dom = editor.getElementByKey(node.getKey());
+              if (dom) {
+                dom.classList.add('doc-footnote');
+              }
+            }, 0);
+          }
           
           // Collect block IDs from created nodes
           const blockId = (node as any).getBlockId?.();
@@ -91,8 +123,37 @@ function createNodeFromBlock(block: DocBlock) {
     
     case 'paragraph': {
       const pNode = $createDocParagraphNode(block.id, block.sectionKey);
+      const metadata = (block as any).metadata;
+      const isNumbered = metadata?.is_numbered;
+      const number = metadata?.number;
+      
       // Use 'text' property (from DocState) or 'content' (legacy)
-      const textRuns = (block as any).text || (block as any).content || [];
+      let textRuns = (block as any).text || (block as any).content || [];
+      
+      // Prepend number for numbered paragraphs
+      if (isNumbered && number) {
+        // Prepend number to first text run
+        if (Array.isArray(textRuns) && textRuns.length > 0) {
+          const firstRun = textRuns[0];
+          if (typeof firstRun === 'object' && firstRun !== null) {
+            textRuns = [{
+              ...firstRun,
+              text: `${number} ${firstRun.text || ''}`
+            }, ...textRuns.slice(1)];
+          } else {
+            textRuns = [{ text: `${number} ${String(firstRun)}` }, ...textRuns.slice(1)];
+          }
+        } else if (typeof textRuns === 'string') {
+          textRuns = [{ text: `${number} ${textRuns}` }];
+        } else {
+          textRuns = [{ text: `${number} ` }];
+        }
+      }
+      
+      // Note: No special treatment for footnotes (just styling)
+      // Divider before footnotes is handled in the initialization loop above
+      // Footnote class is added in the initialization loop after node creation
+      
       appendTextRuns(pNode, textRuns);
       return pNode;
     }
@@ -117,21 +178,65 @@ function createNodeFromBlock(block: DocBlock) {
     
     case 'bulleted_list':
     case 'numbered_list': {
-      // Handle BlockEditor format with proper Lexical nodes
+      // Handle BlockEditor format with proper Lexical nodes and nested children
       const style = block.type === 'bulleted_list' ? 'bullet' : 'number';
       const rawItems = (block as any).items || [];
-      const items = rawItems.map((item: any) => ({
-        content: item.content || item.text || (typeof item === 'string' ? item : '')
-      }));
+      
+      // Recursively convert items preserving nested children
+      const convertListItem = (item: any): { content: string; children?: Array<{ content: string }> } => {
+        // Handle content that could be string, array (InlineSegment[]), or object
+        let content: string = '';
+        const rawContent = item.content || item.text;
+        
+        if (typeof rawContent === 'string') {
+          content = rawContent;
+        } else if (Array.isArray(rawContent)) {
+          // Extract text from InlineSegment[] format
+          content = rawContent.map((seg: any) => {
+            if (typeof seg === 'string') return seg;
+            if (typeof seg === 'object' && seg !== null) {
+              return seg.text || seg.content || '';
+            }
+            return String(seg);
+          }).join('');
+        } else if (typeof rawContent === 'object' && rawContent !== null) {
+          // Handle object format (extract text property)
+          content = rawContent.text || rawContent.content || '';
+        } else if (typeof item === 'string') {
+          content = item;
+        }
+        
+        const result: { content: string; children?: Array<{ content: string }> } = { content };
+        
+        if (item.children && Array.isArray(item.children) && item.children.length > 0) {
+          result.children = item.children.map(convertListItem);
+        }
+        
+        return result;
+      };
+      
+      const items = rawItems.map(convertListItem);
       const listNode = $createDocListNode((block as any).id || block.id, style, items);
       
-      // Create ListItemNode children with TextNode content
-      items.forEach((item: any) => {
-        const listItemNode = $createDocListItemNode();
-        const textNode = $createAiTextNode(item.content || '');
-        listItemNode.append(textNode);
-        listNode.append(listItemNode);
-      });
+      // Recursively create ListItemNode children with nested structure
+      const createListItemNodes = (itemList: Array<{ content: string; children?: Array<{ content: string }> }>, parentNode: any) => {
+        itemList.forEach((item: any) => {
+          const listItemNode = $createDocListItemNode();
+          const textNode = $createAiTextNode(item.content || '');
+          listItemNode.append(textNode);
+          
+          // Handle nested children recursively
+          if (item.children && item.children.length > 0) {
+            const nestedList = $createDocListNode(undefined, style, item.children);
+            createListItemNodes(item.children, nestedList);
+            listItemNode.append(nestedList);
+          }
+          
+          parentNode.append(listItemNode);
+        });
+      };
+      
+      createListItemNodes(items, listNode);
       
       return listNode;
     }
@@ -187,7 +292,79 @@ function createNodeFromBlock(block: DocBlock) {
       return $createDocEmptyNode((block as any).id || block.id);
     }
     
-    // TODO: Implement table, note/callout blocks
+    case 'table': {
+      // Handle table blocks
+      const tableBlock = block as any;
+      const columns = tableBlock.columns || [];
+      const rows = tableBlock.rows || [];
+      const has_header = tableBlock.has_header || false;
+      const column_widths = tableBlock.column_widths || [];
+      const column_alignments = tableBlock.column_alignments || [];
+      
+      // Prepare table data: combine columns (as header if no header row) and rows
+      // IMPORTANT: If columns exist and have data, ALWAYS use them as header (even if has_header=True)
+      // This handles cases where LLM incorrectly sets has_header=True but header is in columns
+      let tableData: string[][] = [];
+      if (columns.length > 0) {
+        // Use columns as header row (prefer columns over first row in rows)
+        // Only use rows[0] as header if columns is empty
+        tableData = [columns, ...rows];
+        console.log('[DocInitializerPlugin] Using columns as header:', columns);
+      } else if (has_header && rows.length > 0) {
+        // Fallback: First row is the header (when columns is empty)
+        tableData = rows;
+        console.log('[DocInitializerPlugin] Using first row as header (columns empty)');
+      } else {
+        // No header, just rows
+        tableData = rows;
+        console.log('[DocInitializerPlugin] No header available');
+      }
+      
+      // Validate table data: ensure all rows have same number of columns as header
+      if (tableData.length > 0) {
+        const headerCols = tableData[0]?.length || 0;
+        const validatedData: string[][] = [tableData[0]]; // Header
+        
+        for (let i = 1; i < tableData.length; i++) {
+          const row = tableData[i] || [];
+          // Pad with empty strings if row has fewer columns, truncate if more
+          const validatedRow: string[] = [];
+          for (let j = 0; j < headerCols; j++) {
+            validatedRow[j] = row[j] !== undefined ? String(row[j]) : '';
+          }
+          validatedData.push(validatedRow);
+        }
+        
+        tableData = validatedData;
+      }
+      
+      // Ensure tableData has at least one row (even if empty)
+      if (tableData.length === 0) {
+        tableData = [['']];
+      }
+      
+      console.log('[DocInitializerPlugin] Creating table:', {
+        blockId: (block as any).id || block.id,
+        columns: columns.length,
+        columnsData: columns,
+        rows: rows.length,
+        has_header,
+        tableDataRows: tableData.length,
+        tableDataHeader: tableData[0],
+        tableDataFirstRow: tableData[1],
+        column_widths: column_widths.length,
+        column_alignments: column_alignments.length,
+        fullTableData: tableData,
+      });
+      
+      return $createDocTableNode(
+        tableData, 
+        (block as any).id || block.id,
+        column_widths,
+        column_alignments
+      );
+    }
+    
     default: {
       console.warn('[DocInitializerPlugin] Unsupported block type:', (block as any).type);
       // Fallback to paragraph

@@ -5,6 +5,7 @@ Performs gap analysis and content improvement using templates.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 from anthropic import Anthropic
@@ -199,8 +200,9 @@ Analyze the current page against the template and identify gaps block by block.
 """
         
         try:
+            model = os.environ.get('TEMPLATE_PROCESSOR_MODEL', 'claude-3-haiku-20240307')
             response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model=model,
                 max_tokens=4096,
                 system=self.gap_analysis_prompt,
                 messages=[{"role": "user", "content": user_prompt}]
@@ -289,8 +291,9 @@ Generate improved content for each block that addresses the identified gaps.
 """
         
         try:
+            model = os.environ.get('TEMPLATE_PROCESSOR_MODEL', 'claude-3-haiku-20240307')
             response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model=model,
                 max_tokens=4096,
                 system=self.content_improvement_prompt,
                 messages=[{"role": "user", "content": user_prompt}]
@@ -398,8 +401,9 @@ Based on all the page-level findings above, create a comprehensive executive sum
 """
         
         try:
+            model = os.environ.get('TEMPLATE_PROCESSOR_MODEL', 'claude-3-haiku-20240307')
             response = self.client.messages.create(
-                model="claude-3-haiku-20240307",
+                model=model,
                 max_tokens=4096,
                 system=self.synthesis_prompt,
                 messages=[{"role": "user", "content": user_prompt}]

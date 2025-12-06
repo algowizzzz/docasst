@@ -38,7 +38,7 @@ class LLMClientWrapper:
             LLM response text
         """
         params = {
-            "model": "claude-3-opus-20240229",
+            "model": os.environ.get('ANTHROPIC_MODEL', 'claude-3-opus-20240229'),
             "max_tokens": max_tokens or 4096,
             "messages": messages,
         }
@@ -70,7 +70,7 @@ class LLMClientWrapper:
         temperature: Optional[float] = None,
         response_format: Optional[str] = None,
         max_tokens: int = 4096,
-        model: str = "claude-3-opus-20240229"
+        model: Optional[str] = None
     ) -> str:
         """
         Simplified invoke with system and user prompts.
@@ -88,9 +88,12 @@ class LLMClientWrapper:
         """
         messages = [{"role": "user", "content": user_prompt}]
         
+        # Use provided model or fall back to env var or default
+        model_name = model or os.environ.get('ANTHROPIC_MODEL', 'claude-3-opus-20240229')
+        
         # Build request parameters
         params = {
-            "model": model,
+            "model": model_name,
             "max_tokens": max_tokens,
             "messages": messages,
             "system": system_prompt,

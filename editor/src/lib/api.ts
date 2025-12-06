@@ -165,8 +165,12 @@ export async function listDocuments(): Promise<{ documents: ApiDocument[] }> {
   return handleResponse(res);
 }
 
-export async function getDocument(fileId: string): Promise<{ document: ApiDocument }> {
-  const res = await fetchWithDebug(`${API_BASE}/doc_review/documents/${encodeURIComponent(fileId)}`, {
+export async function getDocument(fileId: string, includeDocState: boolean = true): Promise<{ document: ApiDocument; doc_state?: any }> {
+  const url = new URL(`${API_BASE}/doc_review/documents/${encodeURIComponent(fileId)}`, window.location.origin);
+  if (includeDocState) {
+    url.searchParams.set('doc_state', 'true');
+  }
+  const res = await fetchWithDebug(url.toString().replace(window.location.origin, ''), {
     headers: buildHeaders(),
   });
   return handleResponse(res);

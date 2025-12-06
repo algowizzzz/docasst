@@ -43,6 +43,19 @@ export class DocParagraphNode extends ParagraphNode {
     }
     return dom;
   }
+  
+  static fromDOM(dom: HTMLElement): DocParagraphNode | null {
+    const blockId = dom.getAttribute('data-block-id');
+    if (blockId) {
+      const node = new DocParagraphNode(blockId);
+      const sectionKey = dom.getAttribute('data-section-key');
+      if (sectionKey) {
+        node.setSectionKey(sectionKey);
+      }
+      return node;
+    }
+    return null;
+  }
 
   updateDOM(prevNode: DocParagraphNode, dom: HTMLElement, config: any): boolean {
     const shouldUpdate = super.updateDOM(prevNode, dom, config);
@@ -60,6 +73,11 @@ export class DocParagraphNode extends ParagraphNode {
         dom.removeAttribute('data-block-id');
       }
     }
+    
+    // Check if this is a footnote and add class
+    // Note: We need to check metadata from the block, but we don't have direct access here
+    // The class will be added in DocInitializerPlugin when creating the node
+    
     return shouldUpdate;
   }
 

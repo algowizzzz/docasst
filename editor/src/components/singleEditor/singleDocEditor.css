@@ -9,6 +9,57 @@
   @apply focus:outline-none;
 }
 
+/* Remove all cursor and hover effects from editor content */
+.single-doc-editor-content * {
+  cursor: text !important;
+}
+
+.single-doc-editor-content *:hover {
+  background-color: transparent !important;
+}
+
+/* Specific overrides for block types */
+.single-doc-editor-content ul.doc-list,
+.single-doc-editor-content ol.doc-list,
+.single-doc-editor-content pre.doc-code,
+.single-doc-editor-content blockquote.doc-quote,
+.single-doc-editor-content hr.doc-divider,
+.single-doc-editor-content table,
+.single-doc-editor-content th,
+.single-doc-editor-content td,
+.single-doc-editor-content .doc-table-container,
+.single-doc-editor-content .doc-table-container table,
+.single-doc-editor-content .doc-table-container th,
+.single-doc-editor-content .doc-table-container td,
+.single-doc-editor-content .doc-table-wrapper,
+.single-doc-editor-content .doc-table-wrapper table,
+.single-doc-editor-content .doc-table-wrapper th,
+.single-doc-editor-content .doc-table-wrapper td {
+  cursor: text !important;
+}
+
+.single-doc-editor-content ul.doc-list:hover,
+.single-doc-editor-content ol.doc-list:hover,
+.single-doc-editor-content pre.doc-code:hover,
+.single-doc-editor-content blockquote.doc-quote:hover,
+.single-doc-editor-content hr.doc-divider:hover,
+.single-doc-editor-content table:hover,
+.single-doc-editor-content th:hover,
+.single-doc-editor-content td:hover,
+.single-doc-editor-content .doc-table-container:hover,
+.single-doc-editor-content .doc-table-container table:hover,
+.single-doc-editor-content .doc-table-container th:hover,
+.single-doc-editor-content .doc-table-container td:hover,
+.single-doc-editor-content .doc-table-container tr:hover,
+.single-doc-editor-content .doc-table-wrapper:hover,
+.single-doc-editor-content .doc-table-wrapper table:hover,
+.single-doc-editor-content .doc-table-wrapper th:hover,
+.single-doc-editor-content .doc-table-wrapper td:hover,
+.single-doc-editor-content .doc-table-wrapper tr:hover {
+  background-color: transparent !important;
+  border-color: inherit !important;
+}
+
 .single-doc-editor-placeholder {
   @apply absolute top-8 left-8 text-gray-400 pointer-events-none select-none;
 }
@@ -86,6 +137,15 @@
   margin-top: 0.5em;
   margin-bottom: 0.5em;
   min-height: 1.6em; /* Ensure empty paragraphs have height */
+}
+
+/* Footnote styling - smaller text */
+.doc-paragraph.doc-footnote {
+  font-size: 0.85em !important;
+  color: #6b7280 !important; /* Gray color for footnotes */
+  margin-top: 0.5em !important;
+  margin-bottom: 0.5em !important;
+  line-height: 1.4 !important;
 }
 
 /* Empty paragraph placeholder */
@@ -203,18 +263,6 @@ ul.doc-list {
   margin: 12px 0 !important;
   padding-left: 32px !important;
   line-height: 1.6;
-  cursor: pointer !important;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-ul.doc-list:hover {
-  background-color: #f9fafb !important;
-}
-
-ul.doc-list:focus {
-  outline: 2px solid #3b82f6 !important;
-  outline-offset: 2px;
 }
 
 ol.doc-list {
@@ -222,18 +270,6 @@ ol.doc-list {
   margin: 12px 0 !important;
   padding-left: 32px !important;
   line-height: 1.6;
-  cursor: pointer !important;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-ol.doc-list:hover {
-  background-color: #f9fafb !important;
-}
-
-ol.doc-list:focus {
-  outline: 2px solid #3b82f6 !important;
-  outline-offset: 2px;
 }
 
 /* Code Blocks */
@@ -250,18 +286,6 @@ pre.doc-code {
   overflow-x: auto !important;
   white-space: pre-wrap !important;
   word-wrap: break-word !important;
-  cursor: pointer !important;
-  transition: border-color 0.2s;
-}
-
-pre.doc-code:hover {
-  border-color: #60a5fa !important;
-}
-
-pre.doc-code:focus {
-  outline: none !important;
-  border-color: #60a5fa !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
 }
 
 pre.doc-code code {
@@ -280,12 +304,6 @@ blockquote.doc-quote {
   color: #1e40af !important;
   font-style: italic !important;
   border-radius: 4px !important;
-  cursor: pointer !important;
-  transition: background-color 0.2s;
-}
-
-blockquote.doc-quote:hover {
-  background-color: #e0f2fe !important;
 }
 
 blockquote.doc-quote p {
@@ -297,11 +315,6 @@ hr.doc-divider {
   border: none !important;
   border-top: 2px solid #e5e5e7 !important;
   margin: 24px 0 !important;
-  cursor: pointer !important;
-}
-
-hr.doc-divider:hover {
-  border-top-color: #3b82f6 !important;
 }
 
 /* Images */
@@ -414,21 +427,55 @@ hr.doc-divider:hover {
 }
 
 /* ===== Table Styles ===== */
-.doc-table {
-  @apply my-4 w-full;
+.doc-table,
+.doc-table-container,
+.doc-table-wrapper {
+  @apply my-4 w-full overflow-x-auto;
+  display: block;
+  box-sizing: border-box;
 }
 
-.doc-table table {
+.doc-table table,
+.doc-table-container table,
+.doc-table-wrapper table {
   @apply w-full border-collapse text-sm;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+  display: table;
+  table-layout: auto;
+  box-sizing: border-box;
 }
 
 .doc-table th,
-.doc-table td {
-  @apply border border-gray-300 px-2 py-1 align-top;
+.doc-table td,
+.doc-table-container th,
+.doc-table-container td,
+.doc-table-wrapper th,
+.doc-table-wrapper td {
+  @apply border border-gray-300 px-3 py-2 align-top;
+  cursor: text !important;
+  word-wrap: break-word;
 }
 
-.doc-table th {
-  @apply bg-gray-50 font-semibold;
+.doc-table th,
+.doc-table-container th,
+.doc-table-wrapper th {
+  @apply font-semibold bg-gray-50;
+  cursor: text !important;
+}
+
+.doc-table tbody tr,
+.doc-table-container tbody tr,
+.doc-table-wrapper tbody tr {
+  @apply hover:bg-gray-50;
+  transition: background-color 0.15s ease;
+}
+
+.doc-table tbody tr:nth-child(even),
+.doc-table-container tbody tr:nth-child(even),
+.doc-table-wrapper tbody tr:nth-child(even) {
+  @apply bg-white;
 }
 
 /* ===== Divider ===== */
@@ -456,14 +503,7 @@ hr.doc-divider:hover {
   border-bottom: 2px solid #fbbf24;
   padding: 2px 0px;
   border-radius: 2px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
   box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.2);
-}
-
-.has-comments:hover {
-  background-color: rgba(255, 235, 59, 0.8) !important;
-  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.35);
 }
 
 /* Comment indicator badge */

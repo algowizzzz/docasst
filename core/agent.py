@@ -1337,7 +1337,16 @@ class DocReviewAgent:
         if not config_path.exists():
             raise FileNotFoundError(f"Doc review agent config not found: {config_path}")
         with config_path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
+            config = json.load(fh)
+        
+        # Override model from env if set
+        import os
+        if 'ANTHROPIC_MODEL' in os.environ:
+            if 'llm' not in config:
+                config['llm'] = {}
+            config['llm']['model'] = os.environ['ANTHROPIC_MODEL']
+        
+        return config
 
     def _load_template_definition(self, template_id: Optional[str]) -> TemplateMeta:
         template_key = template_id or self.config.get("template", {}).get("template_id") or "policy_template"
@@ -1426,7 +1435,17 @@ class DocReviewAgent:
                 if not pdf_path:
                     raise ValueError("pdf_path or source_path required")
                 
-                result = convert_pdf_to_json(pdf_path, output_dir)
+                # Check if intermediary files should be saved (via env var or payload)
+                # Default to True to save intermediary files for debugging/analysis
+                save_intermediary = os.environ.get('SAVE_PDF_INTERMEDIARY', 'true').lower() == 'true'
+                save_intermediary = payload.get("save_intermediary", save_intermediary)
+                
+                # Check if images should be extracted (cropped from full page using bbox)
+                # Default to True - extract image data so images render in UI
+                extract_images = os.environ.get('EXTRACT_PDF_IMAGES', 'true').lower() == 'true'
+                extract_images = payload.get("extract_images", extract_images)
+                
+                result = convert_pdf_to_json(pdf_path, output_dir, save_intermediary=save_intermediary, extract_images=extract_images)
                 
                 # Convert to expected format (compatible with agent expectations)
                 return {

@@ -91,14 +91,23 @@ export function CenterPane({ mode, onModeChange, onTextSelect, selectedIssueId, 
   // Text suggestion state - track last suggestion for Accept/Reject
   const lastTextSuggestionRef = useRef<{ original: string; suggested: string; suggestionId?: string } | null>(null);
   
-  // Memoize DocState conversion - recalculate when file changes or document data loads
+  // Memoize DocState - prefer backend-converted DocState if available, otherwise convert in frontend
   const initialDocState = useMemo(() => {
-    const blockMetadata = doc?.state?.block_metadata || [];
-    console.log('%c[CenterPane v2.0] Creating initialDocState for file:', 'color: #FF9800; font-weight: bold', fileId, 'blocks:', blockMetadata.length);
+    // Prefer backend-converted DocState (has all filtering applied)
+    if ((doc as any)?.doc_state) {
+      console.log('%c[CenterPane] Using backend-converted DocState:', 'color: #4CAF50; font-weight: bold', fileId, 'blocks:', (doc as any).doc_state.blocks?.length);
+      const docState = (doc as any).doc_state;
+      setCurrentDocState(docState);
+      return docState;
+    }
+    
+    // Fallback: convert in frontend (for backward compatibility)
+    const blockMetadata = doc?.state?.structure?.block_metadata || doc?.state?.block_metadata || [];
+    console.log('%c[CenterPane] Using frontend-converted DocState:', 'color: #FF9800; font-weight: bold', fileId, 'blocks:', blockMetadata.length);
     const docState = blockMetadataToDocState({ id: fileId || '', title: '', version: '1.0', block_metadata: blockMetadata });
-    setCurrentDocState(docState); // Initialize current state
+    setCurrentDocState(docState);
     return docState;
-  }, [fileId, doc?.state?.block_metadata]); // Depend on fileId AND block_metadata
+  }, [fileId, doc]); // Depend on fileId and entire doc object (includes doc_state)
   
   // sockets disabled for now to avoid connection issues
   

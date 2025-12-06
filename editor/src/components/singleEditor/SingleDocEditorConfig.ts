@@ -14,6 +14,7 @@ import { DocQuoteNode } from './nodes/DocQuoteNode';
 import { DocDividerNode } from './nodes/DocDividerNode';
 import { DocImageNode } from './nodes/DocImageNode';
 import { DocEmptyNode } from './nodes/DocEmptyNode';
+import { DocTableNode } from './nodes/DocTableNode';
 
 export const singleDocEditorConfig: InitialConfigType = {
   namespace: 'doc-review-single-editor',
@@ -51,6 +52,7 @@ export const singleDocEditorConfig: InitialConfigType = {
     DocDividerNode,
     DocImageNode,
     DocEmptyNode,
+    DocTableNode,
     
     // Standard Lexical nodes
     HeadingNode,

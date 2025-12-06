@@ -182,6 +182,35 @@ def _convert_to_doc_state(record: Dict[str, Any]) -> Dict[str, Any]:
         block_type = block.get("type", "paragraph")
         content = block.get("content", "")
         
+        # Skip header/footer blocks from editor display (but keep in JSON)
+        # IMPORTANT: Never filter out footnotes, even if they're in bottom zone
+        
+        # Check if this is a footnote first
+        metadata = block.get("metadata", {})
+        is_footnote = metadata.get("is_footnote", False) or block_type == "footnote"
+        
+        # Only apply header/footer filtering if NOT a footnote
+        if not is_footnote:
+            # Check for header/footer indicators
+            is_header = block.get("is_header", False) or block.get("role") == "header_logo" or block.get("role") == "header"
+            is_footer = block.get("is_footer", False) or block.get("role") == "footer_logo" or block.get("role") == "footer"
+            
+            # Also check bbox position (top/bottom 10% of page typically contains headers/footers)
+            bbox = block.get("bbox", [])
+            is_in_header_footer_zone = False
+            if bbox and len(bbox) == 4:
+                y1 = bbox[1]  # Top Y coordinate
+                page_height = 792  # Typical PDF page height (adjust if needed)
+                is_top_10 = y1 < (page_height * 0.1)  # Top 10%
+                is_bottom_10 = y1 > (page_height * 0.9)  # Bottom 10%
+                # Only filter if it's a small block (likely header/footer text, not main content)
+                block_height = bbox[3] - bbox[1] if len(bbox) == 4 else 0
+                if (is_top_10 or is_bottom_10) and block_height < 50:  # Small blocks in header/footer zones
+                    is_in_header_footer_zone = True
+            
+            if is_header or is_footer or is_in_header_footer_zone:
+                continue  # Skip rendering but keep in block_metadata
+        
         # Convert content to TextRun format
         text_runs = []
         if isinstance(content, list):
@@ -232,6 +261,78 @@ def _convert_to_doc_state(record: Dict[str, Any]) -> Dict[str, Any]:
                 "items": items,
                 "sectionKey": block.get("section_key"),
             })
+        elif block_type == "bulleted_list":
+            # Convert bulleted list with nested structure
+            def convert_list_item(item_dict, item_index):
+                """Recursively convert list items preserving nested children."""
+                item_content = item_dict.get("content", "")
+                children = item_dict.get("children", [])
+                
+                item_result = {
+                    "content": item_content,
+                }
+                
+                if children:
+                    item_result["children"] = [convert_list_item(child, i) for i, child in enumerate(children)]
+                
+                return item_result
+            
+            items = []
+            list_items = block.get("items", [])
+            for item_index, item in enumerate(list_items):
+                items.append(convert_list_item(item, item_index))
+            
+            blocks.append({
+                "id": block_id,
+                "type": "bulleted_list",
+                "items": items,
+                "sectionKey": block.get("section_key"),
+            })
+        elif block_type == "numbered_paragraph":
+            # Convert numbered paragraph
+            blocks.append({
+                "id": block_id,
+                "type": "paragraph",
+                "text": text_runs,
+                "sectionKey": block.get("section_key"),
+                "metadata": {
+                    "is_numbered": True,
+                    "number": block.get("number"),
+                    "number_style": block.get("number_style"),
+                },
+            })
+        elif block_type == "image":
+            # Convert image block
+            blocks.append({
+                "id": block_id,
+                "type": "image",
+                "src": block.get("src", ""),
+                "alt": block.get("alt", ""),
+                "metadata": {
+                    "bbox": block.get("bbox"),
+                    "role": block.get("role"),
+                    "position": block.get("position"),
+                },
+            })
+        elif block_type == "footnote":
+            # Convert footnote block
+            footnote_content = block.get("content", "")
+            if isinstance(footnote_content, list):
+                footnote_text = "".join([seg.get("text", "") if isinstance(seg, dict) else str(seg) for seg in footnote_content])
+            else:
+                footnote_text = str(footnote_content)
+            
+            blocks.append({
+                "id": block_id,
+                "type": "paragraph",
+                "text": [{"text": footnote_text}],
+                "sectionKey": block.get("section_key"),
+                "metadata": {
+                    "is_footnote": True,
+                    "footnote_id": block.get("footnote_id"),
+                    "number": block.get("number"),  # Include footnote number
+                },
+            })
         elif block_type == "code" or block_type == "preformatted":
             blocks.append({
                 "id": block_id,
@@ -244,12 +345,22 @@ def _convert_to_doc_state(record: Dict[str, Any]) -> Dict[str, Any]:
                 "id": block_id,
                 "type": "divider",
             })
-        else:
-            # Default to paragraph
+        elif block_type == "table":
+            # Convert table block
+            columns = block.get("columns", [])
+            rows = block.get("rows", [])
+            has_header = block.get("has_header", False)
+            column_widths = block.get("column_widths", [])
+            column_alignments = block.get("column_alignments", [])
+            
             blocks.append({
                 "id": block_id,
-                "type": "paragraph",
-                "text": text_runs,
+                "type": "table",
+                "columns": columns,
+                "rows": rows,
+                "has_header": has_header,
+                "column_widths": column_widths,
+                "column_alignments": column_alignments,
             })
     
     # Build DocState
@@ -606,6 +717,21 @@ def get_or_delete_document(file_id: str):
     record = _store.load(file_id)
     if not record:
         return jsonify({"error": "Document not found"}), 404
+    
+    # Check if client wants DocState format (for React editor)
+    use_doc_state = request.args.get('doc_state', 'false').lower() == 'true'
+    if use_doc_state:
+        try:
+            doc_state = _convert_to_doc_state(record)
+            return jsonify({
+                "document": record,
+                "doc_state": doc_state
+            })
+        except Exception as e:
+            logger.exception(f"Failed to convert document {file_id} to DocState: {e}")
+            # Fallback to raw document if conversion fails
+            return jsonify({"document": record})
+    
     return jsonify({"document": record})
 
 @doc_review_bp.route("/api/doc_review/documents/<file_id>/phase1_summary", methods=["GET"])
