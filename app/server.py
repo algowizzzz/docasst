@@ -1,6 +1,7 @@
 """Main Flask application server."""
 
 import logging
+import os
 from flask import Flask, redirect, url_for
 from flask_cors import CORS
 from flask_socketio import SocketIO
@@ -72,7 +73,8 @@ def create_app():
 if __name__ == '__main__':
     app, socketio = create_app()
     config = load_config()
-    port = int(config.get('port', 8000))
+    # Railway/Render set PORT env var automatically
+    port = int(os.getenv('PORT', config.get('port', 8000)))
     host = config.get('host', '0.0.0.0')
     debug = config.get('DEBUG', False)
     

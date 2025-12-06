@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: doc-review-assistant
+    env: python
+    buildCommand: cd editor && npm install && npm run build:editor && cd ..
+    startCommand: python app/server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        fromService:
+          type: web
+          name: doc-review-assistant
+          property: port
+    plan: starter
+    healthCheckPath: /
+
